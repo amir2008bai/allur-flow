@@ -16,6 +16,7 @@
     "echarts": "6.1.0",
     "echarts-for-react": "3.0.6",
     "postprocessing": "6.39.5",
+    "qrcode": "1.5.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "three": "0.186.1",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.3.3",
+    "@types/qrcode": "1.5.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@types/three": "0.186.0",

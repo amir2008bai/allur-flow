@@ -1,16 +1,23 @@
 import { useEffect, useState } from 'react'
 import FactsPage from './FactsPage'
 import TwinPage from './TwinPage'
+import LearningPage from './learn/LearningPage'
+import VotePage from './learn/VotePage'
 import type { Facts, Finding } from './types'
 
 const TABS = [
   { id: 'facts', label: 'Факты из ТЗ', ready: true },
   { id: 'twin', label: 'Двойник', ready: true },
   { id: 'forecast', label: 'Прогноз', ready: false },
-  { id: 'learning', label: 'Обучение', ready: false },
+  { id: 'learning', label: 'Обучение', ready: true },
 ]
 
 export default function App() {
+  if (window.location.pathname.startsWith('/vote')) return <VotePage />
+  return <MainApp />
+}
+
+function MainApp() {
   const [data, setData] = useState<{ facts: Facts; findings: Finding[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState('facts')
@@ -44,6 +51,7 @@ export default function App() {
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {tab === 'twin' && <TwinPage />}
+        {tab === 'learning' && <LearningPage />}
         {tab === 'facts' && error && <div className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</div>}
         {tab === 'facts' && !data && !error && <div className="text-sm text-slate-500">Загрузка данных…</div>}
         {tab === 'facts' && data && <FactsPage facts={data.facts} findings={data.findings} />}
