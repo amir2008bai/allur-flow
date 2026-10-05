@@ -187,7 +187,7 @@ function CalibBlock() {
             <div className="absolute -bottom-5 text-[10px] text-emerald-700" style={{ left: scale(st.norm) }}>норма 2%</div>
           </div>
           <div className="mt-8 grid grid-cols-3 gap-4">
-            <Big label="Вероятность, что выше нормы" value={pct(c.p_above_norm)} />
+            <Big label="Вероятность, что выше нормы" value={c.p_above_norm > 0.99 ? "> 99%" : c.p_above_norm < 0.01 ? "< 1%" : pct(c.p_above_norm)} />
             <Big label="Переделок за смену" value={rework.toFixed(1).replace('.', ',')} note={`при норме — ${reworkNorm.toFixed(1).replace('.', ',')}`} />
             <Big label="Годных за смену (двойник)" value={String(Math.round(c.forecast.good_per_shift))} note={`от ${Math.round(c.forecast.lo)} до ${Math.round(c.forecast.hi)}`} />
           </div>
