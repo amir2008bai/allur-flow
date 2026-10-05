@@ -42,6 +42,7 @@ def run_payload(scenario: str, seed: int) -> dict:
     return {
         "source": "sim",
         "scenario": scenario, "seed": seed, "horizon": run.horizon,
+        "buffer_cap": run.params.buffer_cap,
         "kpi": kpis(run, IDEAL_LINE_CYCLE),
         "bottleneck": bn,
         "stops": stops,

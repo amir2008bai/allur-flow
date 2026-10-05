@@ -1,4 +1,12 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
+import ErrorBoundary from './ErrorBoundary'
+import Dashboard from './twin/Dashboard'
+import Flow2D from './twin/Flow2D'
+import Timeline from './twin/Timeline'
+import ZonePanel from './twin/ZonePanel'
+import { useView } from './twin/store'
+
+const Scene3D = lazy(() => import('./twin/Scene3D'))
 import { load, type Mode, type SimMeta, type SimRun, type WhatIf } from './source'
 import { Card, SourceBadge, fmt } from './ui'
 
@@ -24,10 +32,12 @@ export default function TwinPage() {
   const [run, setRun] = useState<SimRun | null>(null)
   const [whatif, setWhatif] = useState<WhatIf | null>(null)
   const [mode, setMode] = useState<Mode>('live')
+  const view = useView((v) => v.view)
+  const setView = useView((v) => v.setView)
 
   useEffect(() => { load<SimMeta>('/api/sim/meta', '/bundles/meta.json').then((r) => setMeta(r.data)) }, [])
   useEffect(() => {
-    setRun(null); setWhatif(null)
+    setRun(null); setWhatif(null); useView.getState().setPlaying(false)
     load<SimRun>(`/api/sim/run?scenario=${scenario}&seed=7`, `/bundles/run_${scenario}.json`).then((r) => { setRun(r.data); setMode(r.mode) })
     load<WhatIf>(`/api/sim/whatif?scenario=${scenario}&reps=20`, `/bundles/whatif_${scenario}.json`, 15000).then((r) => setWhatif(r.data))
   }, [scenario])
@@ -51,10 +61,34 @@ export default function TwinPage() {
 
       {!run ? <div className="text-sm text-slate-500">Считаю симуляцию…</div> : (
         <>
+          <Card className="overflow-hidden">
+            <div className="relative h-[60vh] min-h-[420px] bg-[#f4f5f7]">
+              {view === '3d'
+                ? <ErrorBoundary key={scenario} fallback={<div className="grid h-full place-items-center text-sm text-slate-500">3D недоступно на этом устройстве — откройте 2D-схему</div>}><Suspense fallback={<div className="grid h-full place-items-center text-sm text-slate-500">Загружаю 3D…</div>}><Scene3D run={run} /></Suspense></ErrorBoundary>
+                : <Flow2D run={run} />}
+              <div className="absolute left-3 top-3 flex rounded-xl bg-white/90 p-1 shadow-sm ring-1 ring-slate-200 backdrop-blur">
+                {(['3d', '2d'] as const).map((v) => (
+                  <button key={v} onClick={() => setView(v)} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${view === v ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'}`}>
+                    {v === '3d' ? '3D' : '2D-схема'}
+                  </button>
+                ))}
+              </div>
+              <div className="absolute bottom-3 left-3 flex flex-wrap gap-3 rounded-xl bg-white/90 px-3 py-2 text-[11px] text-slate-600 shadow-sm ring-1 ring-slate-200 backdrop-blur">
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-red-500" />стоит</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-400" />некуда отдать</span>
+                <span className="flex items-center gap-1.5"><span className="text-amber-500">◆</span>узкое место</span>
+              </div>
+              <ZonePanel run={run} />
+            </div>
+            <div className="border-t border-slate-100 px-5 py-4"><Timeline run={run} /></div>
+          </Card>
+
+          <Dashboard run={run} />
+
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Tile label="Годных машин за смену" value={fmt(Math.round(run.kpi.good_per_shift))} unit={`/ ${run.kpi.plan_per_shift} план`}
               note="считаем на выходе ОТК" tone={run.kpi.good_per_shift < run.kpi.plan_per_shift * 0.95 ? 'bad' : undefined} />
-            <Tile label="Узкое место сейчас" value={name[run.bottleneck.top]} note={`ограничивает поток ${Math.round(100 * (run.bottleneck.sole[run.bottleneck.top] + run.bottleneck.shifting[run.bottleneck.top]))}% времени`} tone="warn" />
+            <Tile label="Главное узкое место" value={name[run.bottleneck.top]} note={`ограничивает поток ${Math.round(100 * (run.bottleneck.sole[run.bottleneck.top] + run.bottleneck.shifting[run.bottleneck.top]))}% времени`} tone="warn" />
             <Tile label="Брак окраски" value={fmt(Math.round(run.kpi.defect_pct.paint * 10) / 10)} unit="%" note="норма 2%" tone={run.kpi.defect_pct.paint > 2 ? 'bad' : undefined} />
             <Tile label="OEE линии" value={fmt(Math.round(run.kpi.oee_pct))} unit="%" note="цель 85% · при допущенном цикле" tone={run.kpi.oee_pct < 85 ? 'warn' : undefined} />
           </div>

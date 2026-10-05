@@ -30,7 +30,7 @@ export interface SimMeta {
 }
 
 export interface SimRun {
-  source: 'sim'; scenario: string; seed: number; horizon: number
+  source: 'sim'; scenario: string; seed: number; horizon: number; buffer_cap: Record<string, number>
   kpi: {
     good_per_shift: number; plan_per_shift: number; scrapped: number; oee_pct: number; oee_note: string
     defect_pct: Record<string, number>; downtime_min: Record<string, number>
