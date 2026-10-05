@@ -20,7 +20,7 @@ function ZoneNode({ data }: NodeProps<Node<ZoneData>>) {
       </div>
       {st ? (
         <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-600">
-          <span className={`h-2 w-2 rounded-full ${st === 'down' ? 'animate-pulse' : ''}`} style={{ background: st === 'working' ? '#334155' : STATE_HEX[st] }} />
+          <span className={`h-2 w-2 rounded-full ${st === 'down' ? 'animate-pulse' : ''}`} style={{ background: STATE_HEX[st] }} />
           {STATE_RU[st]}
         </div>
       ) : (

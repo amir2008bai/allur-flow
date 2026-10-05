@@ -2,6 +2,8 @@ import { Suspense, lazy, useEffect, useState } from 'react'
 import ErrorBoundary from './ErrorBoundary'
 import Dashboard from './twin/Dashboard'
 import Flow2D from './twin/Flow2D'
+import Plan2D from './twin/Plan2D'
+import { ZONES } from './twin/layout'
 import Timeline from './twin/Timeline'
 import ZonePanel from './twin/ZonePanel'
 import { useView } from './twin/store'
@@ -23,6 +25,29 @@ function Tile({ label, value, unit, note, tone }: { label: string; value: string
       <div className="mt-1 flex items-baseline gap-1"><span className="text-4xl font-semibold tracking-tight">{value}</span>{unit && <span className="text-sm text-slate-500">{unit}</span>}</div>
       <div className="mt-1 text-xs text-slate-500">{note}</div>
     </Card>
+  )
+}
+
+function TourButton() {
+  const touring = useView((v) => v.touring)
+  const setTouring = useView((v) => v.setTouring)
+  useEffect(() => {
+    if (!touring) return
+    const order = ZONES.map((z) => z.id)
+    let i = 0
+    useView.getState().select(order[0])
+    const id = setInterval(() => {
+      i += 1
+      if (i >= order.length) { useView.getState().select(null); setTouring(false); return }
+      useView.getState().select(order[i])
+    }, 3200)
+    return () => clearInterval(id)
+  }, [touring, setTouring])
+  return (
+    <button onClick={() => { if (touring) useView.getState().select(null); setTouring(!touring) }}
+      className="absolute left-3 top-16 rounded-xl bg-white/90 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 backdrop-blur hover:text-slate-900">
+      {touring ? '■ Стоп' : '▶ Обзор линии'}
+    </button>
   )
 }
 
@@ -65,15 +90,17 @@ export default function TwinPage() {
             <div className="relative h-[60vh] min-h-[420px] bg-[#f4f5f7]">
               {view === '3d'
                 ? <ErrorBoundary key={scenario} fallback={<div className="grid h-full place-items-center text-sm text-slate-500">3D недоступно на этом устройстве — откройте 2D-схему</div>}><Suspense fallback={<div className="grid h-full place-items-center text-sm text-slate-500">Загружаю 3D…</div>}><Scene3D run={run} /></Suspense></ErrorBoundary>
-                : <Flow2D run={run} />}
+                : view === 'plan' ? <Plan2D run={run} /> : <Flow2D run={run} />}
               <div className="absolute left-3 top-3 flex rounded-xl bg-white/90 p-1 shadow-sm ring-1 ring-slate-200 backdrop-blur">
-                {(['3d', '2d'] as const).map((v) => (
-                  <button key={v} onClick={() => setView(v)} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${view === v ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'}`}>
-                    {v === '3d' ? '3D' : '2D-схема'}
+                {(['3d', 'plan', 'flow'] as const).map((v) => (
+                  <button key={v} onClick={() => setView(v)} className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${view === v ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'}`}>
+                    {v === '3d' ? '3D' : v === 'plan' ? 'План' : 'Схема'}
                   </button>
                 ))}
               </div>
+              {view === '3d' && <TourButton />}
               <div className="absolute bottom-3 left-3 flex flex-wrap gap-3 rounded-xl bg-white/90 px-3 py-2 text-[11px] text-slate-600 shadow-sm ring-1 ring-slate-200 backdrop-blur">
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-green-500" />работает / поток идёт</span>
                 <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-red-500" />стоит</span>
                 <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-400" />некуда отдать</span>
                 <span className="flex items-center gap-1.5"><span className="text-amber-500">◆</span>узкое место</span>

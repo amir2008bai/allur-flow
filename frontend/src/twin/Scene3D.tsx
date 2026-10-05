@@ -4,7 +4,7 @@ import { EffectComposer, N8AO, SMAA } from '@react-three/postprocessing'
 import React, { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import type { SimRun } from '../source'
-import { BUFFERS, STATE_HEX, STATE_RU, ZONES, ZONE_BY_ID, ZONE_BY_STATION, type StationState, type Zone, type ZoneId } from './layout'
+import { BUFFERS, LINKS, STATE_HEX, STATE_RU, STATUS_HEX, ZONES, ZONE_BY_ID, ZONE_BY_STATION, linkStatus, type Link, type LinkStatus, type StationState, type Zone, type ZoneId } from './layout'
 import { useView } from './store'
 
 type Frame = SimRun['frames'][number]
@@ -29,7 +29,7 @@ function Beacon({ state, y }: { state: StationState; y: number }) {
   const mat = useRef<THREE.MeshStandardMaterial>(null)
   useFrame(({ clock }) => {
     if (!mat.current) return
-    mat.current.emissiveIntensity = state === 'down' ? 1.5 + Math.sin(clock.elapsedTime * 6) * 1.2 : state === 'blocked' ? 1.2 : 0.2
+    mat.current.emissiveIntensity = state === 'down' ? 1.5 + Math.sin(clock.elapsedTime * 6) * 1.2 : state === 'blocked' ? 1.2 : state === 'working' ? 0.9 : 0.1
   })
   return (
     <mesh position={[0, y, 0]}>
@@ -109,6 +109,88 @@ function Equipment({ zone, state }: { zone: Zone; state: StationState | null }) 
   }
 }
 
+const GLOW: Record<StationState, string> = { working: '#22c55e', blocked: '#f59e0b', down: '#ef4444', starved: '#cbd5e1' }
+
+/** Мягкое свечение вокруг участка: зелёное — идёт работа, жёлтое — затор, красное — стоит. */
+function StateGlow({ zone, state }: { zone: Zone; state: StationState }) {
+  const mat = useRef<THREE.MeshBasicMaterial>(null)
+  const color = useMemo(() => new THREE.Color(GLOW[state]), [state])
+  useFrame(({ clock }, dt) => {
+    if (!mat.current) return
+    mat.current.color.lerp(color, Math.min(1, dt * 4))
+    const base = state === 'starved' ? 0.12 : 0.38
+    mat.current.opacity = base + (state === 'down' ? Math.sin(clock.elapsedTime * 6) * 0.2 : Math.sin(clock.elapsedTime * 2) * 0.06)
+  })
+  return (
+    <mesh position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[zone.w + 1.2, zone.d + 1.2]} />
+      <meshBasicMaterial ref={mat} transparent opacity={0.3} toneMapped={false} depthWrite={false} />
+    </mesh>
+  )
+}
+
+/** Кольцо прогресса над кузовом: «здесь сейчас обрабатывается кузов». */
+function ProcessRing({ y }: { y: number }) {
+  const ref = useRef<THREE.Mesh>(null)
+  useFrame((_, dt) => { if (ref.current) ref.current.rotation.z -= dt * 2.2 })
+  return (
+    <mesh ref={ref} position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <torusGeometry args={[1.25, 0.06, 8, 48, Math.PI * 1.4]} />
+      <meshBasicMaterial color="#22c55e" toneMapped={false} />
+    </mesh>
+  )
+}
+
+/** Связь между участками: бегущие стрелки на полу и кузов, который едет к следующему участку. */
+function FlowLink({ link, status }: { link: Link; status: LinkStatus }) {
+  const x0 = link.from.x + link.from.w / 2 + 0.3
+  const x1 = link.to.x - link.to.w / 2 - 0.3
+  const len = x1 - x0
+  const n = Math.max(2, Math.floor(len / 2.2))
+  const arrows = useRef<THREE.Group>(null)
+  const car = useRef<THREE.Group>(null)
+  const phase = useRef(Math.random())
+  const color = useMemo(() => new THREE.Color(STATUS_HEX[status]), [status])
+  const mats = useRef<THREE.MeshBasicMaterial[]>([])
+  const shape = useMemo(() => {
+    const sh = new THREE.Shape()
+    sh.moveTo(-0.5, -0.75); sh.lineTo(0.5, 0); sh.lineTo(-0.5, 0.75); sh.lineTo(-0.1, 0); sh.closePath()
+    return sh
+  }, [])
+  const z = link.buffer ? -0.0 : 0
+  useFrame((_, dt) => {
+    const moving = status === 'flow'
+    if (moving) phase.current = (phase.current + dt * 0.45) % 1
+    mats.current.forEach((m) => m && m.color.lerp(color, Math.min(1, dt * 5)))
+    if (arrows.current) arrows.current.children.forEach((c, i) => { c.position.x = x0 + (((i / n + phase.current) % 1) * len) })
+    if (car.current) {
+      car.current.visible = moving && !link.buffer
+      car.current.position.x = x0 + phase.current * len
+    }
+  })
+  const lane = link.buffer ? 4.6 : 0  // у буферов стрелки идут сбоку, чтобы не перекрывать кузова
+  return (
+    <group position={[0, 0, z]}>
+      <group ref={arrows}>
+        {Array.from({ length: n }, (_, i) => (
+          <mesh key={i} position={[x0, 0.04, lane]} rotation={[-Math.PI / 2, 0, 0]}>
+            <shapeGeometry args={[shape]} />
+            <meshBasicMaterial ref={(m) => { if (m) mats.current[i] = m }} color={STATUS_HEX[status]} toneMapped={false} />
+          </mesh>
+        ))}
+      </group>
+      <group ref={car}><CarBody position={[0, 0.05, 0]} scale={0.6} rotY={0} color="#c9ced6" /></group>
+    </group>
+  )
+}
+
+/** Кузов в буфере плавно «вырастает» при появлении. */
+function PopCar(props: { position: [number, number, number]; color: string }) {
+  const ref = useRef<THREE.Group>(null)
+  useFrame((_, dt) => { if (ref.current && ref.current.scale.x < 1) ref.current.scale.setScalar(Math.min(1, ref.current.scale.x + dt * 4)) })
+  return <group ref={ref} position={props.position} scale={0.01}><CarBody position={[0, 0, 0]} scale={0.55} rotY={0} color={props.color} /></group>
+}
+
 function ZoneBlock({ zone, frame, bottleneck }: { zone: Zone; frame: Frame | undefined; bottleneck: boolean }) {
   const selected = useView((s) => s.selected === zone.id)
   const select = useView((s) => s.select)
@@ -127,8 +209,10 @@ function ZoneBlock({ zone, frame, bottleneck }: { zone: Zone; frame: Frame | und
           <meshBasicMaterial color="#0f172a" />
         </mesh>
       )}
+      {state && <StateGlow zone={zone} state={state} />}
       <Equipment zone={zone} state={state} />
       {hasBody && <CarBody position={[0, zone.id === 'assembly' ? 0.6 : 0.2, 0]} color={zone.id === 'welding' ? '#c9ced6' : PAINTED} />}
+      {state === 'working' && zone.id !== 'paint' && <ProcessRing y={zone.id === 'assembly' ? 1.9 : 1.5} />}
       {state && <group position={[zone.w / 2 - 0.6, 0, -zone.d / 2 + 0.6]}>
         <mesh position={[0, 1.1, 0]}><cylinderGeometry args={[0.06, 0.06, 2.2, 8]} /><meshStandardMaterial color="#9aa3af" /></mesh>
         <Beacon state={state} y={2.45} />
@@ -168,7 +252,7 @@ function BufferSlots({ buf, level, cap }: { buf: (typeof BUFFERS)[number]; level
         <meshStandardMaterial color="#e5e8ed" />
       </mesh>
       {slots.map((p, i) => i < level
-        ? <CarBody key={i} position={p} scale={0.55} rotY={0} color={painted ? PAINTED : '#c9ced6'} />
+        ? <PopCar key={i} position={p} color={painted ? PAINTED : '#c9ced6'} />
         : <mesh key={i} position={[p[0], 0.04, p[2]]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[0.5, 1.0]} /><meshBasicMaterial color="#d3d8df" /></mesh>)}
     </group>
   )
@@ -266,8 +350,7 @@ export default function Scene3D({ run, quality = 'high' }: { run: SimRun; qualit
         <planeGeometry args={[600, 400]} />
         <meshStandardMaterial color="#d9dee5" roughness={1} />
       </mesh>
-      {/* транспортная линия по маршруту */}
-      <mesh position={[5, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[88, 0.35]} /><meshBasicMaterial color="#b8c1cc" /></mesh>
+      {LINKS.map((l) => <FlowLink key={l.from.id} link={l} status={linkStatus(l, frame?.states)} />)}
 
       {ZONES.map((z) => <ZoneBlock key={z.id} zone={z} frame={frame} bottleneck={z.id === bnZone} />)}
       {BUFFERS.map((b) => <BufferSlots key={b.id} buf={b} level={frame?.buffers[b.id] ?? 0} cap={caps[b.id]} />)}

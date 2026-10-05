@@ -28,4 +28,27 @@ export const ZONE_BY_STATION = Object.fromEntries(ZONES.filter((z) => z.station)
 export type StationState = 'working' | 'starved' | 'blocked' | 'down'
 export const STATE_RU: Record<StationState, string> = { working: 'работает', starved: 'ждёт кузов', blocked: 'некуда отдать', down: 'стоит' }
 // ISA-101: норма — нейтральная, цвет только для отклонений
-export const STATE_HEX: Record<StationState, string> = { working: '#e8ebf0', starved: '#cfd5de', blocked: '#f5b942', down: '#ef4444' }
+export const STATE_HEX: Record<StationState, string> = { working: '#22c55e', starved: '#cfd5de', blocked: '#f5b942', down: '#ef4444' }
+
+// Рабочий участок подсвечиваем зелёным (просьба пользователя: видно, где сейчас идёт работа)
+export const WORKING_HEX = '#22c55e'
+export const STATUS_HEX = { flow: '#22c55e', jam: '#f59e0b', stop: '#ef4444', idle: '#b6bec9' } as const
+export type LinkStatus = keyof typeof STATUS_HEX
+export const LINK_RU: Record<LinkStatus, string> = { flow: 'поток идёт', jam: 'затор', stop: 'стоит', idle: 'ожидание' }
+
+export interface Link { from: Zone; to: Zone; buffer?: Buf }
+export const LINKS: Link[] = ZONES.slice(0, -1).map((a, i) => {
+  const b = ZONES[i + 1]
+  return { from: a, to: b, buffer: BUFFERS.find((x) => x.from === a.id && x.to === b.id) }
+})
+
+/** Состояние связи a→b в момент кадра: куда и как сейчас идут кузова. */
+export function linkStatus(link: Link, states: Record<string, string> | undefined): LinkStatus {
+  if (!states) return 'idle'
+  const a = link.from.station ? states[link.from.station] : null
+  const b = link.to.station ? states[link.to.station] : null
+  if (b === 'down') return 'stop'
+  if (a === 'blocked') return 'jam'
+  if (b === 'working' || (b === null && a === 'working')) return 'flow'
+  return 'idle'
+}

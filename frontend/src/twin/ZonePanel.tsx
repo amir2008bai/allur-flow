@@ -28,7 +28,7 @@ export default function ZonePanel({ run }: { run: SimRun }) {
 
       {st && (
         <div className="mt-4 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ background: st === 'working' ? '#334155' : STATE_HEX[st] }} />
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: STATE_HEX[st] }} />
           <span className="text-sm font-medium">{clock(t)} — {STATE_RU[st]}</span>
         </div>
       )}

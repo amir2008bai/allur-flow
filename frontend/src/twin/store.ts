@@ -7,12 +7,14 @@ interface ViewState {
   t: number
   playing: boolean
   speed: number // симулированных минут в секунду
-  view: '3d' | '2d'
+  view: '3d' | 'plan' | 'flow'
   select: (z: ZoneId | null) => void
   setT: (t: number) => void
   setPlaying: (p: boolean) => void
   setSpeed: (s: number) => void
-  setView: (v: '3d' | '2d') => void
+  setView: (v: '3d' | 'plan' | 'flow') => void
+  touring: boolean
+  setTouring: (t: boolean) => void
 }
 
 export const useView = create<ViewState>((set) => ({
@@ -21,6 +23,8 @@ export const useView = create<ViewState>((set) => ({
   playing: false,
   speed: 20,
   view: '3d',
+  touring: false,
+  setTouring: (touring) => set({ touring }),
   select: (selected) => set({ selected }),
   setT: (t) => set({ t }),
   setPlaying: (playing) => set({ playing }),
