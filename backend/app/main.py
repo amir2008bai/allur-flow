@@ -8,10 +8,12 @@ from fastapi import FastAPI
 from .findings import all_findings
 from .ingest_docx import load_facts
 from .schemas import Facts, Finding
+from .sim.api import router as sim_router
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "raw" / "test_data.docx"
 
 app = FastAPI(title="Allur Flow API")
+app.include_router(sim_router)
 
 
 @lru_cache
