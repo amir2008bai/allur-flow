@@ -221,6 +221,7 @@ SEV_ORDER = {"critical": 0, "warn": 1, "info": 2, "ok": 3}
 
 
 def all_findings(f: Facts) -> list[Finding]:
+    from .plain import simplify
     items = [*quality_findings(f), plan_gap(f), oee_status(f), *downtime_findings(f), flow_balance(f),
              rty(f), utilization_check(f), period_assumption(f), filter_hypothesis(f), plan_attainment(f)]
-    return sorted(items, key=lambda x: SEV_ORDER[x.severity])
+    return sorted(simplify(items, f), key=lambda x: SEV_ORDER[x.severity])

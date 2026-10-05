@@ -30,7 +30,7 @@ export default function App() {
               <div className="text-[11px] text-slate-500">Цифровой двойник · Костанай</div>
             </div>
           </div>
-          <nav className="flex gap-1 overflow-x-auto">
+          <nav className="flex gap-1 overflow-x-auto [scrollbar-width:none]">
             {TABS.map((t) => (
               <button key={t.id} disabled={!t.ready}
                 className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm ${t.ready ? 'bg-slate-100 font-medium text-slate-900' : 'cursor-not-allowed text-slate-400'}`}>

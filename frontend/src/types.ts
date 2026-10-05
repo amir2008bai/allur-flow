@@ -6,7 +6,7 @@ export interface Provenance { file: string; table: number; row: number }
 export interface Metric { label: string; value: number | string; unit: string; source: Source }
 export interface Finding {
   id: string; title: string; severity: Severity; area: AreaId | null
-  summary: string; metrics: Metric[]; caveat: string | null; provenance: Provenance[]
+  summary: string; plain: string; key: string | null; key_note: string | null; metrics: Metric[]; caveat: string | null; provenance: Provenance[]
 }
 export interface Area { id: AreaId; name: string; order: number }
 export interface LineRecord { date: string; line: string; area: AreaId; plan: number; fact: number; runtime_h: number; utilization_pct: number; provenance: Provenance }

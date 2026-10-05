@@ -95,6 +95,9 @@ class Finding(BaseModel):
     severity: Severity
     area: AreaId | None = None
     summary: str
+    plain: str = Field("", description="Одна короткая строка простым языком для главного экрана")
+    key: str | None = Field(None, description="Главное число карточки, уже с единицей")
+    key_note: str | None = None
     metrics: list[Metric] = []
     caveat: str | None = None
     provenance: list[Provenance] = []
