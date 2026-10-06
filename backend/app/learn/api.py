@@ -56,9 +56,32 @@ def forecast_payload() -> dict:
     return show
 
 
+TSFM_PATH = __import__("pathlib").Path(__file__).resolve().parents[3] / "data" / "tsfm_results.json"
+
+
+def tsfm_summary() -> dict | None:
+    """Foundation-модели как претенденты (посчитаны заранее scripts/tsfm_challengers.py)."""
+    import json
+    if not TSFM_PATH.exists():
+        return None
+    r = json.loads(TSFM_PATH.read_text(encoding="utf-8"))
+    base = r["baselines"]
+    models = []
+    for m in r["models"]:
+        if "error" in m:
+            models.append({"model": m["model"], "error": m["error"]})
+            continue
+        models.append({"model": m["model"], "mae_after_drift": m["mae_after_drift"], "ms_per_forecast": m["ms_per_forecast"],
+                       "vs_ours": 1 - m["mae_after_drift"] / base["served"],
+                       "beats_naive": m["mae_after_drift"] < base["naive"],
+                       "admitted": m["mae_after_drift"] < 0.95 * base["served"]})
+    return {"device": r["device"], "seeds": len(r["seeds"]), "baselines": base, "models": models,
+            "note": "Zero-shot: веса не меняются, модель видит только свежую историю. Прогноз до факта, те же 10 прогонов."}
+
+
 @router.get("/forecast")
 def forecast() -> dict:
-    return forecast_payload()
+    return {**forecast_payload(), "tsfm": tsfm_summary()}
 
 
 class CalibIn(BaseModel):

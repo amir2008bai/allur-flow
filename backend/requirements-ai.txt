@@ -1,0 +1,12 @@
+# Необязательные зависимости для foundation-моделей (TimesFM, Chronos). torch ставить с CUDA:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu130
+# Приложение работает и без них: результаты сравнения лежат в data/tsfm_results.json
+accelerate==1.15.0
+chronos-forecasting==2.3.2
+einops==0.8.2
+huggingface_hub==1.33.0
+pandas==3.0.6
+safetensors==0.8.0
+timesfm==3.0.2
+torch==2.14.1+cu130
+transformers==5.18.0

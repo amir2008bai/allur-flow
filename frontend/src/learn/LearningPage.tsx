@@ -135,11 +135,12 @@ function ForecastBlock() {
       xAxis: { type: 'value', min: rows[0]?.t, max: end, interval: 960, axisLabel: { ...AX, showMinLabel: false, showMaxLabel: false, formatter: (t: number) => `день ${Math.floor(t / 960) + 1}` }, splitLine: { show: false } },
       yAxis: { type: 'value', axisLabel: AX, splitLine: { lineStyle: { color: '#eef1f5' } } },
       series: [
-        { name: 'С обучением', type: 'line', showSymbol: false, lineStyle: { color: '#16a34a', width: 2.5 }, data: rows.map((r) => [r.t, r.mae_served]),
+        { name: 'Что показываем', type: 'line', showSymbol: false, lineStyle: { color: '#16a34a', width: 2.5 }, data: rows.map((r) => [r.t, r.mae_served]),
           markLine: { symbol: 'none', silent: true, data: marks },
           markArea: { silent: true, itemStyle: { color: 'rgba(239,68,68,0.05)' }, data: [[{ xAxis: f.drift_at }, { xAxis: end }]] } },
         { name: 'Без обучения', type: 'line', showSymbol: false, lineStyle: { color: '#f59e0b', width: 1.5 }, data: rows.map((r) => [r.t, r.mae_frozen]) },
         { name: 'Простой', type: 'line', showSymbol: false, lineStyle: { color: '#94a3b8', width: 1.5, type: 'dashed' }, data: rows.map((r) => [r.t, r.mae_naive]) },
+        { name: 'TimesFM 3.0', type: 'line', showSymbol: false, lineStyle: { color: '#7c3aed', width: 1.5 }, data: rows.filter((r) => r.mae_tsfm != null).map((r) => [r.t, r.mae_tsfm]) },
       ],
     }
   }, [f])
@@ -154,18 +155,42 @@ function ForecastBlock() {
       <Head n={2} title="Прогноз учится сам" sub="Прогноз на 2 часа → факт → ошибка → дообучение" badge="forecast" />
       <div className="mt-6 grid grid-cols-3 gap-4">
         <Stat label="Ошибка с обучением" value={`−${Math.round(100 * m.gain_vs_frozen)}%`} sub={`чем без обучения · ${m.beats_frozen} из ${m.seeds} прогонов`} tone="good" />
-        <Stat label="Сейчас показываем" value={last.serving === 'model' ? f.version : 'простой'} sub={last.serving === 'model' ? 'модель точнее простого' : 'модель ещё учится'} />
+        <Stat label="Сейчас показываем" value={last.serving === 'model' ? `наша ${f.version}` : last.serving === 'tsfm' ? 'TimesFM 3.0' : 'простой'} sub="кто точнее на последних фактах" />
         <Stat label="Модель обновилась" value={`${promotions} раз`} sub="сама, без программиста" />
       </div>
       <ReactECharts option={option} style={{ height: 200 }} notMerge className="mt-4" />
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-emerald-600" />с обучением</span>
+        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-emerald-600" />что показываем</span>
         <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-amber-500" />без обучения</span>
         <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 border-t border-dashed border-slate-400" />простой «как 2 ч назад»</span>
+        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-violet-600" />TimesFM 3.0</span>
         <span className="flex items-center gap-1.5"><span className="h-3 w-0.5 bg-red-500" />линия изменилась</span>
         <span className="flex items-center gap-1.5"><span className="h-3 w-0.5 bg-emerald-600" />новая версия модели</span>
       </div>
+      {f.tsfm && (
+        <div className="mt-5">
+          <div className="mb-2 text-sm font-semibold">Претенденты: готовые ИИ-модели от Google и Amazon</div>
+          <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
+            {[{ model: 'наша модель (самообучение)', mae_after_drift: f.tsfm.baselines.served, ours: true }, ...f.tsfm.models].map((m) => {
+              const name: Record<string, string> = { 'timesfm-3.0': 'TimesFM 3.0 · Google', 'timesfm-2.5': 'TimesFM 2.5 · Google', 'chronos-2': 'Chronos-2 · Amazon', 'chronos-2-small': 'Chronos-2 small · Amazon' }
+              const tm = m as { model: string; mae_after_drift?: number; ms_per_forecast?: number; admitted?: boolean; error?: string; ours?: boolean }
+              return (
+                <div key={tm.model} className="grid grid-cols-[minmax(0,1fr)_70px_70px_96px] items-center gap-3 px-3 py-2 text-sm">
+                  <span className={`truncate ${tm.ours ? 'font-semibold' : ''}`}>{name[tm.model] ?? tm.model}</span>
+                  <span className="text-right tabular-nums">{tm.mae_after_drift != null ? num(tm.mae_after_drift) : '—'}</span>
+                  <span className="text-right text-xs tabular-nums text-slate-400">{tm.ms_per_forecast != null ? `${tm.ms_per_forecast} мс` : ''}</span>
+                  <span className={`justify-self-end rounded-full px-2 py-0.5 text-[11px] font-medium ${tm.ours ? 'bg-slate-100 text-slate-600' : tm.error ? 'bg-slate-100 text-slate-400' : tm.admitted ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                    {tm.ours ? 'своя' : tm.error ? 'не запустилась' : tm.admitted ? 'в отборе' : 'не точнее'}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+          <div className="mt-1 text-[11px] text-slate-400">ошибка, машин за 2 ч после смены режима · среднее по {f.tsfm.seeds} прогонам · простой прогноз — {num(f.tsfm.baselines.naive)} · считалось на {f.tsfm.device === 'cuda' ? 'видеокарте' : 'процессоре'}</div>
+        </div>
+      )}
       <More>
+        <p>Претенденты (TimesFM, Chronos) не дообучаются — они видят только свежую историю выпуска (zero-shot). Если претендент точнее на последних фактах, система может сделать его основным — по тому же правилу, что и свои версии.</p>
         <p>Каждые 30 минут система записывает прогноз годных машин на 2 часа вперёд — до того, как они прошли. Когда приходит факт, считает ошибку и дообучается.</p>
         <p>На 3-й день окраска скрыто деградирует (красная зона). Система замечает это сама и переключается на более точную версию модели.</p>
         <p>Защита: прогноз модели показывается, только если на последних фактах она точнее простого прогноза. Пока модель учится — показываем простой.</p>

@@ -85,3 +85,12 @@
 - Фронт: `Copilot.tsx` — кнопка «✦ Спросить двойник» на всех вкладках, чипы, чипы источников, «✓ числа проверены», действие focus → вкладка «Двойник», 3D, выбор участка. Сценарий и вкладка перенесены в общий store.
 - Грабли: новый .tsx-файл — Tailwind в dev-сервере не подхватил классы (fixed без bottom/right) → перезапуск frontend. calc в произвольных классах писать с `_-_`.
 - 28 тестов зелёные. Осталось 4.5 (TimesFM/Chronos).
+
+## 2026-10-06 · Сессия 2 · Этап 4.5 TimesFM / Chronos — ГОТОВ
+- Установлено (отдельно, `backend/requirements-ai.txt`): torch 2.14.1+cu130 (видит RTX 3050), timesfm 3.0.2, chronos-forecasting 2.3.2, transformers 5.18. numpy/River не сдвинулись.
+- `backend/scripts/tsfm_challengers.py`: rolling origin, те же 10 сидов и моменты, прогноз годных на 2 ч по прошлым 30-мин интервалам (zero-shot) → `data/tsfm_results.json` (коммитим — приложению на защите torch не нужен).
+  API: TimesFM3Forecaster.from_pretrained("google/timesfm-3.0-pytorch").predict_batch(contexts, horizon) → .forecast; TimesFM_2p5_200M_torch + ForecastConfig + forecast(horizon, inputs); Chronos BaseChronosPipeline.predict_quantiles.
+- Результат (MAE после дрейфа, машин за 2 ч): TimesFM 3.0 3,24 (18,6 мс GPU / 210 мс CPU на один прогноз) · TimesFM 2.5 3,33 · Chronos-2 3,37 · Chronos-2 small 3,40 (2 мс GPU / 17 мс CPU) · наша 3,63 · простой 3,83 · без обучения 4,18. Готовые модели ТОЧНЕЕ нашей — честно показываем.
+- `forecast.py`: TimesFM 3.0 стал кандидатом на показ; показываем лучшего из {наша, простой, TimesFM} по ошибке на последних ≥8 фактах с запасом 3%. Показанное: 3,63 → 3,46 (TimesFM выбран в 7 из 10). Всегда-TimesFM дал бы 3,24 — цена переключения/осторожности.
+- UI: таблица «Претенденты», фиолетовая линия TimesFM, «Сейчас показываем: TimesFM 3.0».
+- Лицензия: веса TimesFM 3.0 — некоммерческие (пользователь сказал не учитывать). Для внедрения у Allur: TimesFM 2.5 / Chronos-2 (Apache-2.0) или 3.0 через Google Cloud.

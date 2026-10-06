@@ -8,11 +8,13 @@ export interface AlertsState {
 }
 export interface Card { id: string; type: string; title: string; text: string; time: string; model_confidence: number; left: number }
 
-export interface ForecastRow { t: number; y: number; champion: number; frozen: number | null; naive: number; plan: number; mae_champion: number | null; mae_frozen: number | null; mae_naive: number | null; mae_served: number | null; served: number; serving: 'model' | 'naive'; version: string }
+export interface ForecastRow { t: number; y: number; champion: number; frozen: number | null; naive: number; plan: number; mae_champion: number | null; mae_frozen: number | null; mae_naive: number | null; mae_served: number | null; served: number; serving: 'model' | 'naive' | 'tsfm'; mae_tsfm?: number | null; version: string }
+export interface TsfmModel { model: string; mae_after_drift?: number; ms_per_forecast?: number; vs_ours?: number; beats_naive?: boolean; admitted?: boolean; error?: string }
 export interface ForecastPayload {
+  tsfm: { device: string; seeds: number; baselines: Record<string, number>; models: TsfmModel[]; note: string } | null
   interval_min: number; horizon_min: number; plan: number; drift_at: number; warmup: number; version: string; note: string
   timeline: ForecastRow[]
-  events: { t: number; type: 'drift' | 'promotion' | 'freeze' | 'serve_model' | 'serve_naive'; text: string }[]
+  events: { t: number; type: 'drift' | 'promotion' | 'freeze' | 'serve_model' | 'serve_naive' | 'serve_tsfm'; text: string }[]
   multi_seed: { seeds: number; mae_after_drift: Record<string, number>; beats_frozen: number; beats_naive: number; gain_vs_frozen: number; gain_vs_naive: number }
 }
 export interface CalibVersion { version: number; trigger: string; mean: number; lo90: number; hi90: number; p_above_norm: number; n: number; defects: number; forecast: { good_per_shift: number; lo: number; hi: number } }
