@@ -34,6 +34,7 @@ export default function Futures({ scenario, action, seed = 7, onClose }: { scena
   const b = f.intervene.frames[i]?.good ?? 0
   const d = b - a
   const dEnd = f.intervene.frames[f.intervene.frames.length - 1].good - f.do_nothing.frames[f.do_nothing.frames.length - 1].good
+  const atEnd = t >= f.do_nothing.frames.length - 2
   const inService = f.intervene.frames[i]?.states.paint === 'down' || (t >= 200 && t <= 260 && f.action.id === 'paint_service')
 
   const pane = (run: SimRun, title: string, good: number, tone: 'base' | 'good') => (
@@ -65,18 +66,19 @@ export default function Futures({ scenario, action, seed = 7, onClose }: { scena
         <SourceBadge source="sim" />
         <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100" aria-label="Закрыть">✕</button>
       </div>
-      {/* понятная разница: к кому относится число и что будет к концу смены */}
-      <div className="grid gap-3 border-b border-slate-100 px-5 py-3 sm:grid-cols-2">
-        <div className="flex items-baseline gap-3">
-          <span className={`text-3xl font-semibold tabular-nums ${d > 0 ? 'text-emerald-600' : d < 0 ? 'text-red-600' : 'text-slate-400'}`}>{d > 0 ? '+' : ''}{d}</span>
+      {/* одна строка по центру: «справа минус слева», без привязки к половинкам */}
+      <div className="flex flex-col items-center gap-1 border-b border-slate-100 px-5 py-4 text-center">
+        <div className="flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1">
+          <span className="text-lg tabular-nums text-slate-400">{a}</span>
+          <span className="text-slate-300">→</span>
+          <span className="text-lg font-semibold tabular-nums">{b}</span>
           <span className="text-sm text-slate-600">
-            сейчас ({clock(t)}): справа на {Math.abs(d)} {plural(Math.abs(d))} {d > 0 ? 'больше' : d < 0 ? 'меньше' : '— поровну'}
-            {d < 0 && inService ? <span className="block text-xs text-slate-400">идёт обслуживание — линия стоит, потом догоняет</span> : null}
+            {d === 0 ? <>поровну</> : <>«{f.action.name}» {d > 0 ? 'впереди' : 'отстаёт'} на</>}
           </span>
+          {d !== 0 && <span className={`text-3xl font-semibold tabular-nums ${d > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{Math.abs(d)} {plural(Math.abs(d))}</span>}
         </div>
-        <div className="flex items-baseline gap-3">
-          <span className={`text-3xl font-semibold tabular-nums ${dEnd > 0 ? 'text-emerald-600' : dEnd < 0 ? 'text-red-600' : 'text-slate-400'}`}>{dEnd > 0 ? '+' : ''}{dEnd}</span>
-          <span className="text-sm text-slate-600">к концу 2 смен: «{f.action.name}» даёт {dEnd >= 0 ? 'больше' : 'меньше'} на {Math.abs(dEnd)} {plural(Math.abs(dEnd))}</span>
+        <div className="text-xs text-slate-500">
+          {atEnd ? <>итог 2 смен · {clock(t)}</> : <>сейчас {clock(t)}{d < 0 && inService ? ' · идёт обслуживание: линия стоит, потом догоняет' : ''} · к концу смены: <b className={dEnd >= 0 ? 'text-emerald-700' : 'text-red-700'}>{dEnd > 0 ? '+' : ''}{dEnd} {plural(Math.abs(dEnd))}</b></>}
         </div>
       </div>
       <div className="relative grid gap-3 p-3 lg:grid-cols-2">
