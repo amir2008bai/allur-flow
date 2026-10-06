@@ -1,28 +1,57 @@
 import ReactECharts from 'echarts-for-react'
 import QRCode from 'qrcode'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { clock } from '../twin/Timeline'
 import { Card, SourceBadge } from '../ui'
 import { api, pct, type AlertsState, type CalibState, type ForecastPayload } from './api'
 
 const AX = { color: '#94a3b8', fontSize: 10 }
+const num = (x: number, d = 1) => x.toFixed(d).replace('.', ',')
 
-function Big({ label, value, note, tone }: { label: string; value: string; note?: string; tone?: 'good' | 'muted' }) {
+/** Крупная цифра с короткой подписью. */
+function Stat({ label, value, sub, tone }: { label: string; value: ReactNode; sub?: string; tone?: 'good' | 'bad' | 'muted' }) {
+  const color = tone === 'good' ? 'text-emerald-600' : tone === 'bad' ? 'text-red-600' : tone === 'muted' ? 'text-slate-400' : 'text-slate-900'
   return (
-    <div>
+    <div className="min-w-0">
       <div className="text-xs text-slate-500">{label}</div>
-      <div className={`mt-0.5 text-3xl font-semibold tracking-tight ${tone === 'good' ? 'text-emerald-600' : tone === 'muted' ? 'text-slate-400' : ''}`}>{value}</div>
-      {note && <div className="text-xs text-slate-500">{note}</div>}
+      <div className={`mt-1 text-3xl font-semibold tracking-tight tabular-nums ${color}`}>{value}</div>
+      {sub && <div className="mt-0.5 truncate text-xs text-slate-400">{sub}</div>}
     </div>
   )
 }
 
-/** 1. Жюри учит систему: ответы «да/нет» → точность тревог растёт. */
+/** Заголовок блока: номер, название в 2–5 слов, одна строка пояснения. */
+function Head({ n, title, sub, badge }: { n: number; title: string; sub: string; badge: 'feedback' | 'forecast' }) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-slate-900 text-sm font-semibold text-white">{n}</div>
+      <div className="min-w-0 flex-1">
+        <h2 className="text-lg font-semibold leading-tight">{title}</h2>
+        <p className="mt-0.5 text-sm text-slate-500">{sub}</p>
+      </div>
+      <SourceBadge source={badge} />
+    </div>
+  )
+}
+
+/** Подробности — только по клику. */
+function More({ children }: { children: ReactNode }) {
+  return (
+    <details className="group mt-4">
+      <summary className="cursor-pointer list-none text-xs font-medium text-slate-400 hover:text-slate-700">
+        <span className="group-open:hidden">Как это работает ›</span><span className="hidden group-open:inline">Скрыть</span>
+      </summary>
+      <div className="mt-2 space-y-1.5 text-xs leading-relaxed text-slate-500">{children}</div>
+    </details>
+  )
+}
+
+/* ───────────── 1. Тревоги учатся на ответах людей ───────────── */
 function JuryBlock() {
   const [st, setSt] = useState<AlertsState | null>(null)
   const [qr, setQr] = useState('')
   const url = `${window.location.origin}/vote`
-  useEffect(() => { QRCode.toDataURL(url, { margin: 1, width: 220, color: { dark: '#0f172a', light: '#ffffff' } }).then(setQr) }, [url])
+  useEffect(() => { QRCode.toDataURL(url, { margin: 1, width: 200, color: { dark: '#0f172a', light: '#ffffff' } }).then(setQr) }, [url])
   useEffect(() => {
     const load = () => api.alerts().then(setSt).catch(() => {})
     load()
@@ -31,183 +60,178 @@ function JuryBlock() {
   }, [])
 
   const option = useMemo(() => st && ({
-    animationDuration: 400,
-    grid: { left: 36, right: 12, top: 16, bottom: 26 },
+    animationDuration: 300,
+    grid: { left: 34, right: 8, top: 8, bottom: 22 },
     tooltip: { trigger: 'axis', valueFormatter: (v: number) => `${Math.round(v)}%` },
-    xAxis: { type: 'value', min: 0, name: 'ответов', nameLocation: 'end', nameTextStyle: AX, axisLabel: AX, splitLine: { show: false } },
-    yAxis: { type: 'value', min: 0, max: 100, axisLabel: { ...AX, formatter: '{value}%' }, splitLine: { lineStyle: { color: '#eef1f5' } } },
-    series: [
-      { name: 'Точность тревог', type: 'line', showSymbol: false, smooth: true, lineStyle: { color: '#16a34a', width: 2.5 }, areaStyle: { color: 'rgba(22,163,74,0.08)' },
-        data: st.curve.map((p) => [p.votes, p.precision == null ? null : 100 * p.precision]) },
-      { name: 'Найдено реальных проблем', type: 'line', showSymbol: false, smooth: true, lineStyle: { color: '#94a3b8', width: 1.5, type: 'dashed' },
-        data: st.curve.map((p) => [p.votes, p.recall == null ? null : 100 * p.recall]) },
-    ],
+    xAxis: { type: 'value', min: 0, axisLabel: { ...AX, showMaxLabel: false }, splitLine: { show: false } },
+    yAxis: { type: 'value', min: 0, max: 100, interval: 50, axisLabel: { ...AX, formatter: '{value}%' }, splitLine: { lineStyle: { color: '#eef1f5' } } },
+    series: [{ name: 'Точность тревог', type: 'line', step: 'end', showSymbol: false, lineStyle: { color: '#16a34a', width: 2.5 }, areaStyle: { color: 'rgba(22,163,74,0.08)' },
+      data: st.curve.map((p) => [p.votes, p.precision == null ? null : 100 * p.precision]) }],
   }), [st])
+
+  if (!st) return <Card className="p-6 text-sm text-slate-500">Загрузка…</Card>
+  const up = (st.now.precision ?? 0) > (st.start.precision ?? 0)
 
   return (
     <Card className="p-6">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="text-lg font-semibold">Люди учат систему: «это реальная проблема?»</h2>
-          <p className="text-sm text-slate-500">Каждый ответ «да/нет» сразу меняет модель: виды тревог, которые люди отклоняют, система приглушает. Спрашивает о том, что знает хуже всего.</p>
-        </div>
-        <SourceBadge source="feedback" />
-      </div>
-      {!st ? <div className="mt-4 text-sm text-slate-500">Загрузка…</div> : (
-        <div className="mt-5 grid gap-6 lg:grid-cols-[1fr_260px]">
-          <div>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Big label="Точность тревог" value={pct(st.now.precision)} note={`было ${pct(st.start.precision)}`} tone={st.now.precision && st.start.precision && st.now.precision > st.start.precision ? 'good' : undefined} />
-              <Big label="Ответов людей" value={String(st.human_votes)} note={st.simulated_votes ? `+${st.simulated_votes} симулированных` : 'жюри и мастера'} />
-              <Big label="Ложных отсеяно" value={String(st.now.false_suppressed)} note={`из ${st.now.total} проверочных`} />
-              <Big label="Модель" value={st.version} note="версия после каждого ответа" />
-            </div>
-            {option && <ReactECharts option={option} style={{ height: 200 }} notMerge className="mt-3" />}
-            <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
-              {st.types.map((t) => (
-                <div key={t.type} className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs ring-1 transition ${t.muted ? 'bg-slate-50 text-slate-400 ring-slate-100' : 'bg-white text-slate-700 ring-slate-200'}`}>
-                  <span className={`flex-1 ${t.muted ? 'line-through' : ''}`}>{t.title}</span>
-                  <span className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100"><span className={`block h-full rounded-full transition-all duration-500 ${t.muted ? 'bg-slate-300' : 'bg-emerald-500'}`} style={{ width: `${Math.round(t.confirm_rate * 100)}%` }} /></span>
-                  <span className="w-20 text-right tabular-nums">{t.confirmed + t.rejected ? `да ${t.confirmed} · нет ${t.rejected}` : 'нет ответов'}</span>
-                  {t.muted && <span className="text-[10px] font-medium uppercase text-slate-400">приглушено</span>}
+      <Head n={1} title="Люди учат тревоги" sub="Ответ «да/нет» — и ложные тревоги исчезают" badge="feedback" />
+      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_220px]">
+        <div className="min-w-0">
+          <div className="grid grid-cols-3 gap-4">
+            <Stat label="Точность тревог" value={<>{pct(st.start.precision)} <span className="text-slate-300">→</span> <span className={up ? 'text-emerald-600' : ''}>{pct(st.now.precision)}</span></>} sub="сколько тревог — настоящие" />
+            <Stat label="Ложных скрыто" value={st.now.false_suppressed} sub={`из ${st.now.total} проверочных`} tone={st.now.false_suppressed ? 'good' : undefined} />
+            <Stat label="Ответов" value={st.votes} sub={st.simulated_votes ? `${st.human_votes} людей · ${st.simulated_votes} симул.` : 'жюри и мастера'} />
+          </div>
+          {option && st.votes > 0 && <ReactECharts option={option} style={{ height: 120 }} notMerge className="mt-4" />}
+
+          <div className="mt-4 divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
+            {st.types.map((t) => {
+              const n = t.confirmed + t.rejected
+              return (
+                <div key={t.type} className={`grid grid-cols-[minmax(0,1fr)_72px_76px_84px] items-center gap-3 px-3 py-2 text-sm ${t.muted ? 'text-slate-400' : ''}`}>
+                  <span className="truncate" title={t.title}>{t.title}</span>
+                  <span className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                    <span className={`block h-full rounded-full transition-all duration-500 ${t.muted ? 'bg-slate-300' : 'bg-emerald-500'}`} style={{ width: `${Math.round(t.confirm_rate * 100)}%` }} />
+                  </span>
+                  <span className="text-right text-xs tabular-nums text-slate-500">{n ? `✓${t.confirmed}  ✕${t.rejected}` : '—'}</span>
+                  <span className={`justify-self-end rounded-full px-2 py-0.5 text-[11px] font-medium ${t.muted ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-700'}`}>{t.muted ? 'скрыто' : 'показываем'}</span>
                 </div>
-              ))}
-            </div>
-            <p className="mt-3 text-xs text-slate-400">Точность считаем на отдельных тревогах, которые людям не показывали, по правде эмулятора. Обратная сторона: модель становится осторожнее и может пропустить часть реальных проблем — пунктир.</p>
-          </div>
-          <div className="flex flex-col items-center rounded-2xl bg-slate-50 p-4 text-center ring-1 ring-slate-100">
-            <div className="text-sm font-semibold">Ответьте с телефона</div>
-            {qr && <img src={qr} alt="QR-код страницы голосования" className="mt-2 h-40 w-40 rounded-lg" />}
-            <a href="/vote" target="_blank" rel="noreferrer" className="mt-2 break-all text-xs font-medium text-sky-700 underline">{url}</a>
-            <div className="mt-4 flex w-full flex-col gap-2">
-              <button onClick={() => api.simulate(10).then(setSt)} className="rounded-xl bg-white px-3 py-2 text-xs font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">+10 ответов симулированных мастеров</button>
-              <button onClick={() => api.reset().then(() => api.alerts().then(setSt))} className="rounded-xl px-3 py-2 text-xs text-slate-400 hover:text-slate-700">Сбросить обучение</button>
-            </div>
+              )
+            })}
           </div>
         </div>
-      )}
+
+        <div className="flex flex-col items-center rounded-2xl bg-slate-50 p-4 text-center ring-1 ring-slate-100">
+          <div className="text-sm font-semibold">Ответьте с телефона</div>
+          {qr && <img src={qr} alt="QR-код страницы голосования" className="mt-3 h-36 w-36 rounded-lg" />}
+          <a href="/vote" target="_blank" rel="noreferrer" className="mt-2 max-w-full truncate text-xs font-medium text-sky-700 underline">{url.replace(/^https?:\/\//, '')}</a>
+          <button onClick={() => api.simulate(10).then(setSt)} className="mt-4 w-full rounded-xl bg-white px-3 py-2 text-xs font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">+10 ответов мастеров</button>
+          <button onClick={() => api.reset().then(() => api.alerts().then(setSt))} className="mt-1 w-full rounded-xl px-3 py-1.5 text-xs text-slate-400 hover:text-slate-700">Сбросить</button>
+        </div>
+      </div>
+      <More>
+        <p>Для каждого вида тревог система считает, как часто люди отвечают «да». Если вид почти всегда отклоняют — система перестаёт его показывать.</p>
+        <p>Спрашивает о том виде, про который знает меньше всего.</p>
+        <p>Точность проверяется на отдельных тревогах, которые людям не показывали, по правде симулятора. «+10 ответов мастеров» — симулированные ответы (90% правильных), помечены отдельно.</p>
+      </More>
     </Card>
   )
 }
 
-/** 2. Прогноз учится сам: записан до факта, сверен с фактом, модель дообучилась. */
+/* ───────────── 2. Прогноз выпуска учится сам ───────────── */
 function ForecastBlock() {
   const [f, setF] = useState<ForecastPayload | null>(null)
   useEffect(() => { api.forecast().then(setF).catch(() => {}) }, [])
   const option = useMemo(() => {
     if (!f) return null
     const rows = f.timeline.filter((r) => r.mae_served != null)
-    const day = (t: number) => `д${Math.floor(t / 960) + 1} ${clock(t % 960)}`
-    const marks = f.events.filter((e) => e.type === 'drift' || e.type === 'promotion').map((e) => ({ xAxis: e.t, label: { show: true, formatter: e.type === 'drift' ? 'дрейф' : 'новая версия', color: e.type === 'drift' ? '#dc2626' : '#16a34a', fontSize: 10 }, lineStyle: { color: e.type === 'drift' ? '#fca5a5' : '#86efac', type: 'solid' } }))
+    const end = rows[rows.length - 1]?.t
+    const vline = (t: number, color: string) => ({ xAxis: t, lineStyle: { color, type: 'solid', width: 1.5 }, label: { show: false } })
+    const marks = f.events.flatMap((e) => e.type === 'drift' ? [vline(e.t, '#ef4444')] : e.type === 'promotion' ? [vline(e.t, '#16a34a')] : [])
     return {
       animation: false,
-      grid: { left: 36, right: 12, top: 28, bottom: 26 },
-      legend: { top: 0, right: 0, itemWidth: 14, itemHeight: 3, textStyle: { color: '#64748b', fontSize: 11 } },
-      tooltip: { trigger: 'axis', valueFormatter: (v: number) => `${v?.toFixed(1)} маш.` },
-      xAxis: { type: 'value', min: rows[0]?.t, max: rows[rows.length - 1]?.t, axisLabel: { ...AX, formatter: day }, splitLine: { show: false } },
-      yAxis: { type: 'value', name: 'ошибка, машин', nameTextStyle: AX, axisLabel: AX, splitLine: { lineStyle: { color: '#eef1f5' } } },
+      grid: { left: 34, right: 8, top: 10, bottom: 22 },
+      tooltip: { trigger: 'axis', valueFormatter: (v: number) => `${num(v ?? 0)} маш.` },
+      xAxis: { type: 'value', min: rows[0]?.t, max: end, interval: 960, axisLabel: { ...AX, showMinLabel: false, showMaxLabel: false, formatter: (t: number) => `день ${Math.floor(t / 960) + 1}` }, splitLine: { show: false } },
+      yAxis: { type: 'value', axisLabel: AX, splitLine: { lineStyle: { color: '#eef1f5' } } },
       series: [
-        { name: 'Самообучение', type: 'line', showSymbol: false, lineStyle: { color: '#16a34a', width: 2.5 }, data: rows.map((r) => [r.t, r.mae_served]),
+        { name: 'С обучением', type: 'line', showSymbol: false, lineStyle: { color: '#16a34a', width: 2.5 }, data: rows.map((r) => [r.t, r.mae_served]),
           markLine: { symbol: 'none', silent: true, data: marks },
-          markArea: { silent: true, itemStyle: { color: 'rgba(239,68,68,0.05)' }, data: [[{ xAxis: f.drift_at }, { xAxis: rows[rows.length - 1]?.t }]] } },
+          markArea: { silent: true, itemStyle: { color: 'rgba(239,68,68,0.05)' }, data: [[{ xAxis: f.drift_at }, { xAxis: end }]] } },
         { name: 'Без обучения', type: 'line', showSymbol: false, lineStyle: { color: '#f59e0b', width: 1.5 }, data: rows.map((r) => [r.t, r.mae_frozen]) },
-        { name: '«Как в прошлые 2 ч»', type: 'line', showSymbol: false, lineStyle: { color: '#94a3b8', width: 1.5, type: 'dashed' }, data: rows.map((r) => [r.t, r.mae_naive]) },
+        { name: 'Простой', type: 'line', showSymbol: false, lineStyle: { color: '#94a3b8', width: 1.5, type: 'dashed' }, data: rows.map((r) => [r.t, r.mae_naive]) },
       ],
     }
   }, [f])
 
+  if (!f || !option) return <Card className="p-6 text-sm text-slate-500">Считаю 5 дней работы линии…</Card>
+  const m = f.multi_seed
+  const last = f.timeline[f.timeline.length - 1]
+  const promotions = f.events.filter((e) => e.type === 'promotion').length
+
   return (
     <Card className="p-6">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="text-lg font-semibold">Прогноз выпуска учится сам</h2>
-          <p className="text-sm text-slate-500">Каждые 30 мин система записывает прогноз годных на 2 часа вперёд — до факта. Пришёл факт → ошибка → модель дообучается.</p>
-        </div>
-        <SourceBadge source="forecast" />
+      <Head n={2} title="Прогноз учится сам" sub="Прогноз на 2 часа → факт → ошибка → дообучение" badge="forecast" />
+      <div className="mt-6 grid grid-cols-3 gap-4">
+        <Stat label="Ошибка с обучением" value={`−${Math.round(100 * m.gain_vs_frozen)}%`} sub={`чем без обучения · ${m.beats_frozen} из ${m.seeds} прогонов`} tone="good" />
+        <Stat label="Сейчас показываем" value={last.serving === 'model' ? f.version : 'простой'} sub={last.serving === 'model' ? 'модель точнее простого' : 'модель ещё учится'} />
+        <Stat label="Модель обновилась" value={`${promotions} раз`} sub="сама, без программиста" />
       </div>
-      {!f || !option ? <div className="mt-4 text-sm text-slate-500">Считаю 5 дней потока…</div> : (
-        <>
-          <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Big label="Ошибка меньше, чем без обучения" value={`−${Math.round(100 * f.multi_seed.gain_vs_frozen)}%`} note={`в ${f.multi_seed.beats_frozen} из ${f.multi_seed.seeds} прогонов`} tone="good" />
-            <Big label="Ошибка самообучения" value={f.multi_seed.mae_after_drift.served.toFixed(1).replace('.', ',')} note="машин за 2 ч, после смены режима" />
-            <Big label="«Как в прошлые 2 ч»" value={f.multi_seed.mae_after_drift.naive.toFixed(1).replace('.', ',')} note={`самообучение точнее на ${Math.round(100 * f.multi_seed.gain_vs_naive)}% · лучше в ${f.multi_seed.beats_naive} из ${f.multi_seed.seeds}`} tone="muted" />
-            <Big label="Текущая модель" value={f.version} note={`${f.events.filter((e) => e.type === 'promotion').length} автозамены`} />
-          </div>
-          <ReactECharts option={option} style={{ height: 230 }} notMerge className="mt-3" />
-          <ul className="mt-2 space-y-1 text-xs text-slate-500">
-            {f.events.filter((e) => e.type === 'drift' || e.type === 'promotion').map((e, i) => (
-              <li key={i}><span className={e.type === 'drift' ? 'text-red-600' : 'text-emerald-600'}>●</span> день {Math.floor(e.t / 960) + 1}, {clock(e.t % 960)} — {e.text}</li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs text-slate-500">Защита: прогноз модели показывается, только когда на последних фактах она точнее простого прогноза «как в прошлые 2 ч». Пока модель учится — показываем простой. Сейчас: <b>{f.timeline[f.timeline.length - 1].serving === 'model' ? `модель ${f.version}` : 'простой прогноз'}</b>.</p>
-          <p className="mt-1 text-xs text-slate-400">{f.note} Красная зона — после скрытой деградации окраски. Сравнение на 10 разных прогонах, а не на одном удачном.</p>
-        </>
-      )}
+      <ReactECharts option={option} style={{ height: 200 }} notMerge className="mt-4" />
+      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-emerald-600" />с обучением</span>
+        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-amber-500" />без обучения</span>
+        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 border-t border-dashed border-slate-400" />простой «как 2 ч назад»</span>
+        <span className="flex items-center gap-1.5"><span className="h-3 w-0.5 bg-red-500" />линия изменилась</span>
+        <span className="flex items-center gap-1.5"><span className="h-3 w-0.5 bg-emerald-600" />новая версия модели</span>
+      </div>
+      <More>
+        <p>Каждые 30 минут система записывает прогноз годных машин на 2 часа вперёд — до того, как они прошли. Когда приходит факт, считает ошибку и дообучается.</p>
+        <p>На 3-й день окраска скрыто деградирует (красная зона). Система замечает это сама и переключается на более точную версию модели.</p>
+        <p>Защита: прогноз модели показывается, только если на последних фактах она точнее простого прогноза. Пока модель учится — показываем простой.</p>
+        <p>Цифры — среднее по {m.seeds} разным прогонам симуляции: ошибка {num(m.mae_after_drift.served)} машины против {num(m.mae_after_drift.frozen)} без обучения и {num(m.mae_after_drift.naive)} у простого прогноза.</p>
+        <ul className="mt-1 space-y-0.5">
+          {f.events.filter((e) => e.type === 'drift' || e.type === 'promotion').map((e, i) => (
+            <li key={i}><span className={e.type === 'drift' ? 'text-red-500' : 'text-emerald-600'}>●</span> день {Math.floor(e.t / 960) + 1}, {clock(e.t % 960)} — {e.text}</li>
+          ))}
+        </ul>
+      </More>
     </Card>
   )
 }
 
-/** 3. Калибровка: человек вводит брак за смену → оценка и прогноз двойника обновляются. */
+/* ───────────── 3. Брак окраски: ввод человека ───────────── */
 function CalibBlock() {
   const [st, setSt] = useState<CalibState | null>(null)
   const [produced, setProduced] = useState(118)
   const [defects, setDefects] = useState(6)
-  const [who, setWho] = useState('')
   const [busy, setBusy] = useState(false)
   useEffect(() => { api.calib().then(setSt).catch(() => {}) }, [])
   if (!st) return <Card className="p-6 text-sm text-slate-500">Загрузка…</Card>
   const c = st.current
-  const scale = (x: number) => `${Math.min(100, (x / 0.12) * 100)}%`
-  const rework = c.mean * 120
-  const reworkNorm = st.norm * 120
-
-  const submit = async () => {
-    setBusy(true)
-    try { setSt(await api.calibAdd(produced, defects, who)) } finally { setBusy(false) }
-  }
+  const pos = (x: number) => `${Math.min(100, (x / 0.1) * 100)}%`
+  const submit = async () => { setBusy(true); try { setSt(await api.calibAdd(produced, defects, 'жюри')) } finally { setBusy(false) } }
 
   return (
     <Card className="p-6">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="text-lg font-semibold">Уточните брак окраски — двойник пересчитается</h2>
-          <p className="text-sm text-slate-500">Старт — 2 дня из ТЗ. Каждый ввод сужает «вилку» и меняет прогноз двойника.</p>
-        </div>
-        <SourceBadge source="feedback" />
-      </div>
-      <div className="mt-5 grid gap-6 lg:grid-cols-[1fr_300px]">
-        <div>
-          <div className="flex items-baseline gap-3">
-            <span className="text-4xl font-semibold tracking-tight">{pct(c.mean, 1)}</span>
-            <span className="text-sm text-slate-500">брак окраски · вилка {pct(c.lo90, 1)}–{pct(c.hi90, 1)} (90%)</span>
+      <Head n={3} title="Уточните брак окраски" sub="Введите брак за смену — двойник пересчитается" badge="feedback" />
+      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_260px]">
+        <div className="min-w-0">
+          <div className="grid grid-cols-3 gap-4">
+            <Stat label="Брак окраски" value={pct(c.mean, 1)} sub={`точно от ${pct(c.lo90, 1)} до ${pct(c.hi90, 1)}`} tone={c.mean > st.norm ? 'bad' : 'good'} />
+            <Stat label="Переделок за смену" value={num(c.mean * 120)} sub={`при норме — ${num(st.norm * 120)}`} />
+            <Stat label="Годных за смену" value={Math.round(c.forecast.good_per_shift)} sub="прогноз двойника" />
           </div>
-          <div className="relative mt-4 h-8 rounded-full bg-slate-100">
-            <div className="absolute inset-y-0 rounded-full bg-amber-200 transition-all duration-700" style={{ left: scale(c.lo90), width: `calc(${scale(c.hi90)} - ${scale(c.lo90)})` }} />
-            <div className="absolute inset-y-0 w-1 rounded-full bg-amber-600 transition-all duration-700" style={{ left: scale(c.mean) }} />
-            <div className="absolute inset-y-[-4px] w-0.5 bg-emerald-600" style={{ left: scale(st.norm) }} title="норма 2%" />
-            <div className="absolute -bottom-5 text-[10px] text-emerald-700" style={{ left: scale(st.norm) }}>норма 2%</div>
+          {/* шкала: норма и «вилка» оценки */}
+          <div className="relative mt-6 h-3 rounded-full bg-slate-100">
+            <div className="absolute inset-y-0 rounded-full bg-red-200 transition-all duration-700" style={{ left: pos(c.lo90), width: `calc(${pos(c.hi90)} - ${pos(c.lo90)})` }} />
+            <div className="absolute -inset-y-1 w-1 rounded-full bg-red-600 transition-all duration-700" style={{ left: pos(c.mean) }} />
+            <div className="absolute -inset-y-1.5 w-0.5 bg-emerald-600" style={{ left: pos(st.norm) }} />
           </div>
-          <div className="mt-8 grid grid-cols-3 gap-4">
-            <Big label="Вероятность, что выше нормы" value={c.p_above_norm > 0.99 ? "> 99%" : c.p_above_norm < 0.01 ? "< 1%" : pct(c.p_above_norm)} />
-            <Big label="Переделок за смену" value={rework.toFixed(1).replace('.', ',')} note={`при норме — ${reworkNorm.toFixed(1).replace('.', ',')}`} />
-            <Big label="Годных за смену (двойник)" value={String(Math.round(c.forecast.good_per_shift))} note={`от ${Math.round(c.forecast.lo)} до ${Math.round(c.forecast.hi)}`} />
+          <div className="relative mt-1.5 h-4 text-[11px]">
+            <span className="absolute -translate-x-1/2 text-emerald-700" style={{ left: pos(st.norm) }}>норма 2%</span>
+            <span className="absolute right-0 text-slate-400">10%</span>
           </div>
-          <ul className="mt-4 space-y-1 text-xs text-slate-500">
-            {st.history.slice(-4).reverse().map((h) => <li key={h.version}>v{h.version} · {h.trigger} → {pct(h.mean, 1)}</li>)}
-          </ul>
         </div>
         <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
-          <div className="text-sm font-semibold">Данные за смену</div>
-          <label className="mt-3 block text-xs text-slate-500">Выпущено кузовов
-            <input type="number" min={1} value={produced} onChange={(e) => setProduced(Number(e.target.value))} className="mt-1 w-full rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-slate-200" /></label>
-          <label className="mt-2 block text-xs text-slate-500">Из них с браком
-            <input type="number" min={0} value={defects} onChange={(e) => setDefects(Number(e.target.value))} className="mt-1 w-full rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-slate-200" /></label>
-          <label className="mt-2 block text-xs text-slate-500">Кто ввёл
-            <input value={who} onChange={(e) => setWho(e.target.value)} placeholder="например, жюри" className="mt-1 w-full rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-slate-200" /></label>
-          <button disabled={busy || defects > produced} onClick={submit} className="mt-3 w-full rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white disabled:opacity-40">{busy ? 'Пересчитываю…' : 'Обучить двойник'}</button>
-          <button onClick={() => api.calibUndo().then(setSt)} className="mt-2 w-full text-xs text-slate-400 hover:text-slate-700">Откатить последний ввод</button>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs text-slate-500">Выпущено
+              <input type="number" min={1} value={produced} onChange={(e) => setProduced(Number(e.target.value))} className="mt-1 w-full rounded-lg bg-white px-3 py-2 text-base font-semibold ring-1 ring-slate-200" /></label>
+            <label className="text-xs text-slate-500">С браком
+              <input type="number" min={0} value={defects} onChange={(e) => setDefects(Number(e.target.value))} className="mt-1 w-full rounded-lg bg-white px-3 py-2 text-base font-semibold ring-1 ring-slate-200" /></label>
+          </div>
+          <button disabled={busy || defects > produced || produced < 1} onClick={submit} className="mt-3 w-full rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white disabled:opacity-40">{busy ? 'Пересчитываю…' : 'Обучить двойник'}</button>
+          <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+            <span>версия v{c.version}</span>
+            <button onClick={() => api.calibUndo().then(setSt)} className="hover:text-slate-700">↶ откатить</button>
+          </div>
         </div>
       </div>
+      <More>
+        <p>Старт — 2 дня брака окраски из ТЗ (10 дефектов на 231). Каждый ввод добавляется к данным: оценка уточняется, «вилка» сужается, двойник пересчитывает выпуск.</p>
+        <p>Вероятность, что брак выше нормы 2%: {c.p_above_norm > 0.99 ? 'больше 99%' : pct(c.p_above_norm)}.</p>
+        <ul className="mt-1 space-y-0.5">{st.history.slice(-5).reverse().map((h) => <li key={h.version}>v{h.version} · {h.trigger} → {pct(h.mean, 1)}</li>)}</ul>
+      </More>
     </Card>
   )
 }
