@@ -4,6 +4,7 @@ import type { SimRun } from '../source'
 import Plan2D from '../twin/Plan2D'
 import Timeline, { clock } from '../twin/Timeline'
 import ZonePanel from '../twin/ZonePanel'
+import CauseBanner from '../twin/CauseBanner'
 import type { ZoneId } from '../twin/layout'
 import { useView } from '../twin/store'
 import { Card, SourceBadge } from '../ui'
@@ -95,6 +96,7 @@ export default function StressPage() {
             {view === '3d'
               ? <ErrorBoundary key={run.fault.id + run.seed} fallback={<Plan2D run={run} />}><Suspense fallback={null}><Scene3D run={run} /></Suspense></ErrorBoundary>
               : <Plan2D run={run} />}
+            <CauseBanner run={run} />
             <ZonePanel run={run} />
             {/* тревоги всплывают по ходу времени */}
             <div className="pointer-events-none absolute left-3 top-3 flex w-72 flex-col gap-2">

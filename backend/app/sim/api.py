@@ -95,3 +95,25 @@ async def stream(scenario: str = "base", seed: int = 7, speed: float = Query(30,
         yield "event: end\ndata: {}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@lru_cache(maxsize=32)
+def futures_payload(scenario: str, action: str, seed: int) -> dict:
+    """Два будущих одной смены: «ничего не делаем» и «вмешиваемся». Одинаковые случайные числа (CRN)."""
+    if action not in INTERVENTIONS:
+        raise HTTPException(404, f"Нет действия {action}")
+    base = run_payload(scenario, seed)
+    run = simulate(INTERVENTIONS[action]["apply"](_scenario(scenario)), seed)
+    alt = {
+        "source": "sim", "scenario": f"{scenario}+{action}", "seed": seed, "horizon": run.horizon,
+        "buffer_cap": run.params.buffer_cap, "kpi": kpis(run, IDEAL_LINE_CYCLE), "bottleneck": bottleneck(run),
+        "stops": [e for e in run.events if e["type"] == "stop_start"],
+        "defects": [e for e in run.events if e["type"] in ("defect", "scrap")], "frames": run.frames,
+    }
+    return {"source": "sim", "action": {"id": action, "name": INTERVENTIONS[action]["name"], "detail": INTERVENTIONS[action]["detail"]},
+            "scenario": scenario, "seed": seed, "do_nothing": base, "intervene": alt}
+
+
+@router.get("/futures")
+def futures(scenario: str = "paint_degradation", action: str = "paint_service", seed: int = 7) -> dict:
+    return futures_payload(scenario, action, seed)

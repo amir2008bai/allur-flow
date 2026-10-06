@@ -3,6 +3,8 @@ import ErrorBoundary from './ErrorBoundary'
 import Dashboard from './twin/Dashboard'
 import Flow2D from './twin/Flow2D'
 import Plan2D from './twin/Plan2D'
+import CauseBanner from './twin/CauseBanner'
+import Futures from './twin/Futures'
 import { ZONES } from './twin/layout'
 import Timeline from './twin/Timeline'
 import ZonePanel from './twin/ZonePanel'
@@ -59,11 +61,12 @@ export default function TwinPage() {
   const [whatif, setWhatif] = useState<WhatIf | null>(null)
   const [mode, setMode] = useState<Mode>('live')
   const view = useView((v) => v.view)
+  const [futures, setFutures] = useState<string | null>(null)
   const setView = useView((v) => v.setView)
 
   useEffect(() => { load<SimMeta>('/api/sim/meta', '/bundles/meta.json').then((r) => setMeta(r.data)) }, [])
   useEffect(() => {
-    setRun(null); setWhatif(null); useView.getState().setPlaying(false)
+    setRun(null); setWhatif(null); setFutures(null); useView.getState().setPlaying(false)
     load<SimRun>(`/api/sim/run?scenario=${scenario}&seed=7`, `/bundles/run_${scenario}.json`).then((r) => { setRun(r.data); setMode(r.mode) })
     load<WhatIf>(`/api/sim/whatif?scenario=${scenario}&reps=20`, `/bundles/whatif_${scenario}.json`, 15000).then((r) => setWhatif(r.data))
   }, [scenario])
@@ -80,6 +83,8 @@ export default function TwinPage() {
             {s.name}
           </button>
         ))}
+        <button onClick={() => { setFutures('paint_service'); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+          className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">◐ Два будущих рядом</button>
         <span className="ml-auto flex items-center gap-2 text-xs text-slate-500">
           <SourceBadge source="sim" /> 2 смены · {mode === 'live' ? 'сервер' : 'записанный прогон'}
         </span>
@@ -87,7 +92,8 @@ export default function TwinPage() {
 
       {!run ? <div className="text-sm text-slate-500">Считаю симуляцию…</div> : (
         <>
-          <Card className="overflow-hidden">
+          {futures && <Futures scenario={scenario} action={futures} onClose={() => setFutures(null)} />}
+          {!futures && <Card className="overflow-hidden">
             <div className="relative h-[60vh] min-h-[420px] bg-[#f4f5f7]">
               {view === '3d'
                 ? <ErrorBoundary key={scenario} fallback={<div className="grid h-full place-items-center text-sm text-slate-500">3D недоступно на этом устройстве — откройте 2D-схему</div>}><Suspense fallback={<div className="grid h-full place-items-center text-sm text-slate-500">Загружаю 3D…</div>}><Scene3D run={run} /></Suspense></ErrorBoundary>
@@ -106,10 +112,11 @@ export default function TwinPage() {
                 <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-400" />некуда отдать</span>
                 <span className="flex items-center gap-1.5"><span className="text-amber-500">◆</span>узкое место</span>
               </div>
+              <CauseBanner run={run} />
               <ZonePanel run={run} />
             </div>
             <div className="border-t border-slate-100 px-5 py-4"><Timeline run={run} /></div>
-          </Card>
+          </Card>}
 
           <Dashboard run={run} />
 
@@ -164,6 +171,7 @@ export default function TwinPage() {
                       {o.significant ? `точно в пределах ${fmt(Math.round(o.ci95[0] * 10) / 10)}…${fmt(Math.round(o.ci95[1] * 10) / 10)}` : 'эффект не подтверждён'}
                     </div>
                     <p className="mt-3 text-sm text-slate-600">{o.detail}</p>
+                    <button onClick={() => { setFutures(o.id); window.scrollTo({ top: 0, behavior: 'smooth' }) }} className="mt-3 text-xs font-semibold text-emerald-700 hover:text-emerald-900">◐ Показать два будущих →</button>
                   </Card>
                 ))}
               </div>

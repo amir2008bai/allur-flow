@@ -1,6 +1,8 @@
 import type { SimRun } from '../source'
 import { BUFFERS, LINKS, LINK_RU, STATE_HEX, STATE_RU, STATUS_HEX, ZONES, ZONE_BY_STATION, linkStatus, type StationState, type Zone } from './layout'
 import { useView } from './store'
+import { ROLE_HEX, causeChain } from './cause'
+import { causeLinks } from './CauseFx'
 
 // Вид сверху в стиле чертежа. Единицы SVG — метры, та же раскладка, что и в 3D.
 const TINT: Record<StationState, string> = { working: 'rgba(34,197,94,0.10)', starved: 'rgba(148,163,184,0.06)', blocked: 'rgba(245,158,11,0.14)', down: 'rgba(239,68,68,0.14)' }
@@ -28,9 +30,10 @@ export default function Plan2D({ run }: { run: SimRun }) {
   const frame = run.frames[Math.min(Math.floor(t), run.frames.length - 1)]
   const bnStation = run.bottleneck.timeline[Math.min(Math.floor(t / 10), run.bottleneck.timeline.length - 1)]?.station
   const bnZone = bnStation ? ZONE_BY_STATION[bnStation]?.id : undefined
+  const steps = causeChain(frame, run, t)
 
   return (
-    <svg viewBox="-42 -10 97 20" className="h-full w-full select-none" preserveAspectRatio="xMidYMid meet" onClick={() => select(null)}>
+    <svg viewBox="-42 -13 97 23" className="h-full w-full select-none" preserveAspectRatio="xMidYMid meet" onClick={() => select(null)}>
       <defs>
         <pattern id="g1" width="1" height="1" patternUnits="userSpaceOnUse"><path d="M1 0H0V1" fill="none" stroke="#e8ecf1" strokeWidth="0.03" /></pattern>
         <pattern id="g5" width="5" height="5" patternUnits="userSpaceOnUse"><rect width="5" height="5" fill="url(#g1)" /><path d="M5 0H0V5" fill="none" stroke="#dbe1e8" strokeWidth="0.05" /></pattern>
@@ -38,8 +41,8 @@ export default function Plan2D({ run }: { run: SimRun }) {
           <marker key={k} id={`arr-${k}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0 0L10 5L0 10z" fill={c} /></marker>
         ))}
       </defs>
-      <style>{'@keyframes dash{to{stroke-dashoffset:-1.2}} .flowing{animation:dash .6s linear infinite}'}</style>
-      <rect x={-42} y={-10} width={97} height={20} fill="url(#g5)" />
+      <style>{'@keyframes dash{to{stroke-dashoffset:-1.2}} .flowing{animation:dash .6s linear infinite} @keyframes cdash{to{stroke-dashoffset:-3}} .cause{animation:cdash .5s linear infinite} @keyframes pulse2{0%{r:4;opacity:.6}100%{r:11;opacity:0}} .shock{animation:pulse2 1.4s ease-out infinite}'}</style>
+      <rect x={-42} y={-13} width={97} height={23} fill="url(#g5)" />
 
       {/* потоки между участками */}
       {LINKS.map((l) => {
@@ -90,6 +93,20 @@ export default function Plan2D({ run }: { run: SimRun }) {
             {bnZone === z.id && <text x={z.w / 2 - 0.6} y={-z.d / 2 + 1.4} textAnchor="end" fontSize={1.2} fill="#f59e0b">◆</text>}
           </g>
         )
+      })}
+      {/* причина → следствие: волна у причины и дуги по линии */}
+      {steps.length > 0 && (() => {
+        const z0 = ZONES.find((z) => z.id === steps[0].zone)!
+        return <circle cx={z0.x} cy={z0.z} r={6} fill="none" stroke="#ef4444" strokeWidth={0.25} className="shock" />
+      })()}
+      {causeLinks(steps).map(([f, to]) => {
+        const a = ZONES.find((z) => z.id === f.zone)!, b = ZONES.find((z) => z.id === to.zone)!
+        const ya = a.z - a.d / 2 - 0.4, yb = b.z - b.d / 2 - 0.4, mx = (a.x + b.x) / 2, my = Math.min(ya, yb) - 3.5
+        return <path key={f.zone + to.zone} d={`M ${a.x} ${ya} Q ${mx} ${my} ${b.x} ${yb}`} fill="none" stroke={ROLE_HEX[to.role]} strokeWidth={0.35} strokeDasharray="1 0.5" className="cause" markerEnd={`url(#arr-${to.role === 'result' ? 'idle' : 'stop'})`} />
+      })}
+      {steps.map((s) => {
+        const z = ZONES.find((q) => q.id === s.zone)!
+        return <g key={s.zone} transform={`translate(${z.x} ${z.z - z.d / 2 - 0.4})`}><circle r={0.9} fill={ROLE_HEX[s.role]} /><text y={0.35} textAnchor="middle" fontSize={1} fontWeight={700} fill="#fff">{s.order}</text></g>
       })}
       <text x={-41.5} y={9.5} fontSize={0.7} fill="#94a3b8">Вид сверху · сетка 1 м · компоновка условная</text>
     </svg>

@@ -6,6 +6,8 @@ import * as THREE from 'three'
 import type { SimRun } from '../source'
 import { BUFFERS, LINKS, STATE_HEX, STATE_RU, STATUS_HEX, ZONES, ZONE_BY_ID, ZONE_BY_STATION, linkStatus, type Link, type LinkStatus, type StationState, type Zone, type ZoneId } from './layout'
 import { useView } from './store'
+import { causeChain } from './cause'
+import { CauseBadges, CauseFx3D, CauseProjector } from './CauseFx'
 
 type Frame = SimRun['frames'][number]
 
@@ -331,6 +333,8 @@ export default function Scene3D({ run, quality = 'high' }: { run: SimRun; qualit
   const bnZone: ZoneId | undefined = bnStation ? ZONE_BY_STATION[bnStation]?.id : undefined
   const caps = run.buffer_cap
   const labelRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const causeRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const steps = useMemo(() => causeChain(frame, run, t), [frame, run, t])
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -358,6 +362,8 @@ export default function Scene3D({ run, quality = 'high' }: { run: SimRun; qualit
       <ContactShadows position={[5, 0.01, 0]} scale={120} blur={2.5} far={12} opacity={0.55} resolution={1024} />
       <CameraRig />
       <LabelProjector refs={labelRefs} />
+      <CauseFx3D steps={steps} />
+      <CauseProjector steps={steps} refs={causeRefs} />
       {quality === 'high' && (
         <EffectComposer multisampling={0}>
           <N8AO halfRes aoRadius={2.5} intensity={2.5} />
@@ -366,6 +372,7 @@ export default function Scene3D({ run, quality = 'high' }: { run: SimRun; qualit
       )}
     </Canvas>
     <ZoneLabels frame={frame} refs={labelRefs} />
+    <CauseBadges steps={steps} refs={causeRefs} />
     </div>
   )
 }
