@@ -17,6 +17,8 @@ import contextvars
 
 # Сценарий, открытый сейчас в интерфейсе: копилот говорит о том же, что видит пользователь
 CURRENT_SCENARIO: contextvars.ContextVar[str] = contextvars.ContextVar("scenario", default="paint_degradation")
+CURRENT_SEED: contextvars.ContextVar[int] = contextvars.ContextVar("seed", default=7)
+CURRENT_VIEW: contextvars.ContextVar[dict] = contextvars.ContextVar("view", default={})
 
 
 def _facts():
@@ -26,7 +28,7 @@ def _facts():
 
 def get_line_status() -> dict:
     scenario = CURRENT_SCENARIO.get()
-    r = run_payload(scenario, 7)
+    r = run_payload(scenario, CURRENT_SEED.get())
     k, bn = r["kpi"], r["bottleneck"]
     return {"source": "симуляция", "scenario": scenario,
             "годных_за_смену": round(k["good_per_shift"], 1), "план_за_смену": k["plan_per_shift"],
@@ -78,6 +80,21 @@ def get_learning_status() -> dict:
             "прогноз_ошибка_меньше_чем_без_обучения_pct": round(100 * f["gain_vs_frozen"])}
 
 
+def get_current_view() -> dict:
+    """Что пользователь видит на экране прямо сейчас: вкладка, дата, время, выбранный участок, состояния, инцидент, испытание."""
+    v = dict(CURRENT_VIEW.get() or {})
+    out = {"source": "экран пользователя", **{k: v[k] for k in ("tab", "date", "time", "scenario_name", "selected_zone", "incident", "stress") if v.get(k)}}
+    t = v.get("t")
+    if t is not None:
+        r = run_payload(CURRENT_SCENARIO.get(), CURRENT_SEED.get())
+        f = r["frames"][min(int(t), len(r["frames"]) - 1)]
+        ru = {"working": "работает", "starved": "ждёт кузов", "blocked": "некуда отдать", "down": "стоит"}
+        out["состояния_сейчас"] = {STATION_RU[s]: ru.get(st, st) for s, st in f["states"].items()}
+        out["годных_к_этому_моменту"] = f["good"]
+        out["буферы"] = f["buffers"]
+    return out
+
+
 def focus_3d(zone: str) -> dict:
     """UI-действие: показать участок в 3D. Возвращает подтверждение для интерфейса."""
     if zone not in ZONES:
@@ -85,11 +102,13 @@ def focus_3d(zone: str) -> dict:
     return {"ok": True, "показан_участок": ZONES[zone], "action": {"type": "focus", "zone": zone}}
 
 
-REGISTRY = {"get_line_status": get_line_status, "compare_actions": compare_actions, "get_paint_quality": get_paint_quality,
+REGISTRY = {"get_current_view": get_current_view, "get_line_status": get_line_status, "compare_actions": compare_actions, "get_paint_quality": get_paint_quality,
             "get_data_findings": get_data_findings, "get_learning_status": get_learning_status, "focus_3d": focus_3d}
 
 SCENARIO_ENUM = ["base", "paint_degradation", "conveyor_break"]
 SCHEMAS = [
+    {"type": "function", "function": {"name": "get_current_view", "description": "Что пользователь видит на экране сейчас: вкладка, дата и время смены, выбранный участок, состояния участков в этот момент, текущий инцидент, открытое испытание. Вызывай, когда спрашивают «что сейчас», «что происходит», «что на экране», «почему».",
+     "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "get_line_status", "description": "Текущее состояние линии в симуляции: годные за смену, план, узкое место, брак окраски, OEE, простои.",
      "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "compare_actions", "description": "Сравнить действия (обслужить камеру окраски, второй пост ремонта, +6 мест в буфере): прирост машин за смену с интервалом.",

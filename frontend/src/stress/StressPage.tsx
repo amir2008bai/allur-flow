@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
-import { PackageX, PlugZap, Target, Unlink, Users, Wind, Zap, type LucideIcon } from 'lucide-react'
+import { ArrowUpRight, PackageX, PlugZap, Sparkles, Target, Unlink, Users, Wind, Zap, type LucideIcon } from 'lucide-react'
 import ErrorBoundary from '../ErrorBoundary'
 import type { SimRun } from '../source'
 import Plan2D from '../twin/Plan2D'
@@ -45,6 +45,7 @@ export default function StressPage() {
       const r: StressRun = await fetch(`/api/stress/run?id=${s.id}&seed=${seed}`).then((x) => x.json())
       setSeed(next)
       setRun(r)
+      useView.getState().setScreen({ stressInfo: `${r.fault.name} — ${r.verdict.seen}` })
       const v = useView.getState()
       v.setPlaying(false)
       v.setT(Math.max(0, r.fault.window[0] - 20))   // за 20 мин до сбоя
@@ -127,7 +128,13 @@ export default function StressPage() {
               <div className="text-xs text-slate-500">Годных за 2 смены</div>
               <div className="mt-1 text-2xl font-semibold">{run.compare.good_fault} <span className="text-sm font-normal text-slate-400">без сбоя {run.compare.good_base}</span></div>
             </div>
-            <p className="text-sm text-slate-600 sm:col-span-3">{run.verdict.seen}</p>
+            <div className="flex flex-wrap items-center justify-between gap-3 sm:col-span-3">
+              <p className="text-sm text-slate-600">{run.verdict.seen}</p>
+              <div className="flex gap-2">
+                <button onClick={() => useView.getState().ask(`Что произошло в испытании «${run.fault.name}» и что делать начальнику смены?`)} className="flex items-center gap-1.5 rounded-xl bg-violet-50 px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100"><Sparkles size={15} />Спросить ИИ</button>
+                <button onClick={() => { const v = useView.getState(); v.setScenario(`stress:${run.fault.id}`); v.setTab('twin'); window.scrollTo({ top: 0 }) }} className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"><ArrowUpRight size={15} />Открыть в Двойнике</button>
+              </div>
+            </div>
           </div>
         </Card>
       )}

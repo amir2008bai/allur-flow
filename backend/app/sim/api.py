@@ -28,9 +28,23 @@ def con():
 
 
 def _scenario(name: str):
+    if name.startswith("stress:"):
+        from ..stress import SCENARIOS as STRESS
+        sc = next((s for s in STRESS if s["id"] == name[7:]), None)
+        if sc is None:
+            raise HTTPException(404, f"Нет сбоя {name}")
+        return sc["params"]()
     if name not in SCENARIOS:
         raise HTTPException(404, f"Нет сценария {name}")
     return SCENARIOS[name]
+
+
+def scenario_name(name: str) -> str:
+    if name.startswith("stress:"):
+        from ..stress import SCENARIOS as STRESS
+        sc = next((s for s in STRESS if s["id"] == name[7:]), None)
+        return f"Испытание: {sc['name']}" if sc else name
+    return SCENARIO_RU.get(name, name)
 
 
 @lru_cache(maxsize=64)
@@ -41,7 +55,7 @@ def run_payload(scenario: str, seed: int) -> dict:
     stops = [e for e in run.events if e["type"] == "stop_start"]
     return {
         "source": "sim",
-        "scenario": scenario, "seed": seed, "horizon": run.horizon,
+        "scenario": scenario, "scenario_name": scenario_name(scenario), "seed": seed, "horizon": run.horizon,
         "buffer_cap": run.params.buffer_cap,
         "kpi": kpis(run, IDEAL_LINE_CYCLE),
         "bottleneck": bn,

@@ -1,4 +1,4 @@
-import { ChevronDown, CircleCheck, Columns2, Sparkles, Target } from 'lucide-react'
+import { Box, ChevronDown, CircleCheck, Columns2, Factory, Sparkles, Target, Wallet } from 'lucide-react'
 import { useState } from 'react'
 import type { WhatIf } from '../source'
 import { Card } from '../ui'
@@ -64,7 +64,24 @@ export default function Actions({ whatif, onFutures }: { whatif: WhatIf | null; 
                 <span className="text-sm text-slate-500">машин за смену</span>
               </div>
               <div className="mt-1 text-xs text-slate-500">точно в пределах {n1(o.ci95[0])}…{n1(o.ci95[1])}{o.closes_gap ? ' · план выполнен' : ''}</div>
-              <p className="mt-3 flex-1 text-sm text-slate-600">{o.detail}</p>
+              <div className="mt-3 flex-1 space-y-2.5 text-sm">
+                <div><div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400"><Factory size={12} />На заводе</div><div className="text-slate-700">{o.do || o.detail}</div></div>
+                {o.changes && o.changes.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400"><Box size={12} />В двойнике</div>
+                    <ul className="mt-0.5 space-y-0.5">
+                      {o.changes.slice(0, 3).map((c) => (
+                        <li key={c.what} className="flex items-baseline justify-between gap-2 text-slate-600">
+                          <span className="truncate">{c.what}</span>
+                          <span className="shrink-0 tabular-nums"><span className="text-slate-400">{String(c.before).replace('.', ',')}</span> → <b className="text-slate-900">{String(c.after).replace('.', ',')}</b> {c.unit}</span>
+                        </li>
+                      ))}
+                      {o.changes.length > 3 && <li className="text-xs text-slate-400">ещё {o.changes.length - 3} параметра</li>}
+                    </ul>
+                  </div>
+                )}
+                {o.cost && <div className="flex items-center gap-1.5 text-xs text-slate-500"><Wallet size={12} />{o.cost}</div>}
+              </div>
               <div className="mt-3 flex flex-wrap gap-3">
                 <button onClick={() => onFutures(o.id)} className="flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900"><Columns2 size={13} />Два будущих</button>
                 <button onClick={() => ask(`Почему «${o.name}» даёт +${n1(o.delta_per_shift)} машин за смену и как это внедрить на линии?`)} className="flex items-center gap-1 text-xs font-semibold text-violet-700 hover:text-violet-900"><Sparkles size={13} />Почему?</button>
@@ -91,7 +108,7 @@ export default function Actions({ whatif, onFutures }: { whatif: WhatIf | null; 
           )}
         </div>
       )}
-      <p className="mt-3 text-xs text-slate-400">Оценка на 20 одинаковых прогонах симуляции — это модель, а не гарантия на заводе.</p>
+      <p className="mt-3 text-xs text-slate-400">Оценка на 20 одинаковых прогонах симуляции. Цифры «было» — допущения модели (время цикла, ремонта); после загрузки реальных данных они заменятся фактическими, и расчёт пересчитается.</p>
     </div>
   )
 }

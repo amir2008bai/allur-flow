@@ -19,6 +19,30 @@ def paired_ci(diff: np.ndarray, level: float = 0.95) -> tuple[float, float, floa
     return m, m - h, m + h
 
 
+def param_changes(before: LineParams, after: LineParams) -> list[dict]:
+    """Что именно меняется в двойнике: параметр было → стало (считается из модели, не пишется руками)."""
+    from .params import BUFFER_RU, STATION_RU
+    out = []
+    for s, a in before.stations.items():
+        b = after.stations[s]
+        if abs(b.cycle - a.cycle) > 1e-9:
+            out.append({"what": f"Цикл: {STATION_RU[s].lower()}", "before": round(a.cycle, 2), "after": round(b.cycle, 2), "unit": "мин", "source": "assumption"})
+        if abs(b.mttr - a.mttr) > 1e-9 and a.mtbf_work:
+            out.append({"what": f"Ремонт после отказа: {STATION_RU[s].lower()}", "before": round(a.mttr), "after": round(b.mttr), "unit": "мин", "source": "assumption"})
+    for k, v in before.buffer_cap.items():
+        if after.buffer_cap[k] != v:
+            out.append({"what": f"Буфер {BUFFER_RU[k]}", "before": v, "after": after.buffer_cap[k], "unit": "мест", "source": "assumption"})
+    if after.repair_servers != before.repair_servers:
+        out.append({"what": "Посты точечного ремонта", "before": before.repair_servers, "after": after.repair_servers, "unit": "шт", "source": "assumption"})
+    for d in after.degradations:
+        if d.reset_at is not None and all(x.reset_at is None for x in before.degradations if x.station == d.station):
+            out.append({"what": f"Брак и цикл окраски", "before": f"растут с {int(d.start // 60 + 8):02d}:00", "after": f"норма с {int(d.reset_at // 60 + 8):02d}:{int(d.reset_at % 60):02d}", "unit": "", "source": "sim"})
+    for f in after.forced_downs:
+        if f not in before.forced_downs:
+            out.append({"what": f"Плановая остановка: {STATION_RU[f.station].lower()}", "before": "—", "after": f"{int(f.minutes)} мин", "unit": "", "source": "sim"})
+    return out
+
+
 def compare(base: LineParams, intervention_ids: list[str], reps: int = 20, seed0: int = 1000) -> dict:
     seeds = [seed0 + i for i in range(reps)]
     shifts = base.horizon / base.shift_minutes
@@ -37,7 +61,8 @@ def compare(base: LineParams, intervention_ids: list[str], reps: int = 20, seed0
         m, lo, hi = paired_ci(good - b_good)
         tops = [bottleneck(r)["top"] for r in runs]
         out["options"].append({
-            "id": iid, "name": spec["name"], "detail": spec["detail"],
+            "id": iid, "name": spec["name"], "detail": spec["detail"], "do": spec.get("do", ""), "cost": spec.get("cost", ""),
+            "changes": param_changes(base, spec["apply"](base)),
             "good_per_shift": float(good.mean()),
             "delta_per_shift": m, "ci95": [lo, hi],
             "significant": lo > 0 or hi < 0,

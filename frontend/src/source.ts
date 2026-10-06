@@ -30,7 +30,7 @@ export interface SimMeta {
 }
 
 export interface SimRun {
-  source: 'sim'; scenario: string; seed: number; horizon: number; buffer_cap: Record<string, number>
+  source: 'sim'; scenario: string; scenario_name?: string; seed: number; horizon: number; buffer_cap: Record<string, number>
   kpi: {
     good_per_shift: number; plan_per_shift: number; scrapped: number; oee_pct: number; oee_note: string
     defect_pct: Record<string, number>; downtime_min: Record<string, number>
@@ -46,7 +46,7 @@ export interface SimRun {
 export interface WhatIf {
   reps: number; scenario: string
   baseline: { good_per_shift: number; bottleneck: string }
-  options: { id: string; name: string; detail: string; good_per_shift: number; delta_per_shift: number; ci95: [number, number]; significant: boolean; closes_gap: boolean; bottleneck_after: string }[]
-  plan_per_shift: number; gap_per_shift: number
+  options: { id: string; name: string; detail: string; good_per_shift: number; delta_per_shift: number; ci95: [number, number]; significant: boolean; closes_gap: boolean; bottleneck_after: string; do?: string; cost?: string; changes?: { what: string; before: number | string; after: number | string; unit: string; source: string }[] }[]
+  plan_per_shift: number; gap_per_shift: number; useful?: string[]
   combo: { ids: string[]; names: string[]; good_per_shift: number; delta_per_shift: number; ci95: [number, number]; closes_gap: boolean } | null
 }

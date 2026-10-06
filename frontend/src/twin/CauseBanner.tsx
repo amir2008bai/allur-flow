@@ -2,11 +2,16 @@ import type { SimRun } from '../source'
 import { ROLE_HEX, shortText, type CauseStep } from './cause'
 import { clock } from './Timeline'
 import { useCause } from './useCause'
+import { useEffect } from 'react'
+import { useView } from './store'
 
 /** Строка «причина → следствие» поверх любого вида. Плавно появляется, не мелькает.
  *  compact — для узких окон: причина → первое следствие → итог, остальное свёрнуто в «+N». */
 export default function CauseBanner({ run, compact = false }: { run: SimRun; compact?: boolean }) {
   const inc = useCause(run)
+  useEffect(() => {
+    useView.getState().setScreen({ incidentText: inc ? inc.steps.map((s) => `${s.title} ${shortText(s)}`).join(' → ') : null })
+  }, [inc])
   let steps: (CauseStep | { more: number })[] = inc?.steps ?? []
   if (inc && compact && inc.steps.length > 3) {
     const [cause, first, ...rest] = inc.steps

@@ -90,7 +90,13 @@ export default function TwinPage() {
             {s.name}
           </button>
         ))}
-        <button onClick={() => { setFutures('paint_service'); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+        {scenario.startsWith('stress:') && (
+          <span className="flex items-center gap-1 rounded-xl bg-red-600 py-2 pl-4 pr-2 text-sm font-medium text-white">
+            {run?.scenario_name ?? 'Испытание'}
+            <button onClick={() => setScenario('base')} className="ml-1 rounded-lg px-1.5 hover:bg-red-700" aria-label="Закрыть испытание">✕</button>
+          </span>
+        )}
+        <button onClick={() => { setFutures((whatif?.useful?.[0]) ?? 'fast_repair'); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
           className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"><Columns2 size={16} className="mr-1.5 inline -mt-0.5" />Два будущих рядом</button>
         <span className="ml-auto flex items-center gap-3 text-xs text-slate-500">
           <DatePicker value={date} onChange={setDate} />

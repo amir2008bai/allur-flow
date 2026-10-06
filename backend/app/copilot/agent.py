@@ -13,7 +13,7 @@ from pathlib import Path
 
 import httpx
 
-from .tools import CURRENT_SCENARIO, REGISTRY, SCHEMAS
+from .tools import CURRENT_SCENARIO, CURRENT_SEED, CURRENT_VIEW, REGISTRY, SCHEMAS
 
 ENV_PATH = Path(__file__).resolve().parents[3] / ".env"
 URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -102,7 +102,10 @@ def ask_llm(question: str, history: list[dict] | None = None) -> dict:
         raise RuntimeError("нет ключа OpenRouter")
     errors = []
     for model in _models(env):
-        messages = [{"role": "system", "content": SYSTEM}, *(history or [])[-6:], {"role": "user", "content": question}]
+        v = CURRENT_VIEW.get() or {}
+        ctx = "; ".join(f"{k}: {v[k]}" for k in ("tab", "date", "time", "scenario_name", "selected_zone", "incident", "stress") if v.get(k))
+        sys = SYSTEM + ((chr(10) + f"Сейчас на экране пользователя — {ctx}. Если вопрос про «сейчас/это/здесь» — это про экран; вызови get_current_view.") if ctx else "")
+        messages = [{"role": "system", "content": sys}, *(history or [])[-6:], {"role": "user", "content": question}]
         tool_log, actions = [], []
         try:
             for _ in range(4):
@@ -149,7 +152,19 @@ def ask_offline(question: str) -> dict:
             actions.append(res["action"])
         return res
 
-    if any(w in q for w in ("брак", "окраск", "переделк", "фильтр")):
+    if any(w in q for w in ("сейчас", "происходит", "на экране", "здесь", "испытан")) and CURRENT_VIEW.get():
+        v = use("get_current_view")
+        st = v.get("состояния_сейчас", {})
+        bad = [f"{k} — {s}" for k, s in st.items() if s in ("стоит", "некуда отдать")]
+        parts = [f"{v.get('date', '')} {v.get('time', '')}".strip()]
+        if v.get("incident"): parts.append(f"Идёт эпизод: {v['incident']}")
+        elif bad: parts.append("; ".join(bad))
+        else: parts.append("Линия работает без потерь")
+        if v.get("stress"): parts.append(f"Открыто испытание: {v['stress']}")
+        ans = ". ".join(p for p in parts if p) + "."
+        zone = v.get("selected_zone_id")
+        if zone: use("focus_3d", zone=zone)
+    elif any(w in q for w in ("брак", "окраск", "переделк", "фильтр")):
         p = use("get_paint_quality"); use("focus_3d", zone="paint")
         ans = (f"Брак окраски — {_ru(p['брак_окраски_оценка_pct'])}% при норме 2% (вилка {_ru(p['интервал_90_pct'][0])}–{_ru(p['интервал_90_pct'][1])}%). "
                f"Это {_ru(p['переделок_за_смену'])} переделки за смену вместо {_ru(p['переделок_при_норме'])}. "
@@ -176,8 +191,11 @@ def ask_offline(question: str) -> dict:
             "unverified": verify_numbers(ans, [t["result"] for t in tools])}
 
 
-def ask(question: str, history: list[dict] | None = None, offline: bool = False, scenario: str = "paint_degradation") -> dict:
+def ask(question: str, history: list[dict] | None = None, offline: bool = False, scenario: str = "paint_degradation",
+        seed: int = 7, view: dict | None = None) -> dict:
     CURRENT_SCENARIO.set(scenario)
+    CURRENT_SEED.set(seed)
+    CURRENT_VIEW.set(view or {})
     if not offline:
         try:
             return ask_llm(question, history)

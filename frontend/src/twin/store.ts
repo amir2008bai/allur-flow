@@ -23,6 +23,9 @@ interface ViewState {
   date: string
   setDate: (d: string) => void
   question: string | null
+  incidentText: string | null
+  stressInfo: string | null
+  setScreen: (p: { incidentText?: string | null; stressInfo?: string | null }) => void
   ask: (q: string) => void
   clearQuestion: () => void
 }
@@ -39,6 +42,9 @@ export const useView = create<ViewState>((set) => ({
   tab: 'facts',
   date: todayISO(),
   question: null,
+  incidentText: null,
+  stressInfo: null,
+  setScreen: (p) => set(p),
   ask: (question) => set({ question }),
   clearQuestion: () => set({ question: null }),
   setDate: (date) => set({ date }),

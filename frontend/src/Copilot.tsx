@@ -1,18 +1,32 @@
 import { Sparkles } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useView } from './twin/store'
+import { longDate, seedFromDate } from './dates'
+import { clock } from './twin/Timeline'
+import { ZONE_BY_ID } from './twin/layout'
 import type { ZoneId } from './twin/layout'
 
 // Копилот: вопрос → функции двойника → короткий ответ с источниками; может сам показать участок в 3D.
 interface Reply { answer: string; model: string; mode: 'llm' | 'offline'; sources: string[]; unverified: string[]; actions: { type: string; zone: ZoneId }[]; fallback_reason?: string }
 interface Msg { role: 'user' | 'assistant'; text: string; meta?: Reply }
 
-const CHIPS = ['Во что обходится брак окраски?', 'Где узкое место?', 'Что сделать, чтобы выпустить больше?', 'Почему OEE не считается?']
+const CHIPS = ['Что сейчас происходит?', 'Во что обходится брак окраски?', 'Что сделать, чтобы выполнить план?', 'Почему OEE не считается?']
 
 /** **жирный** → <b>, остальная разметка убирается. */
 function Rich({ text }: { text: string }) {
   const clean = text.replace(/^#+\s*/gm, '').replace(/^\s*[-*]\s+/gm, '• ')
   return <>{clean.split(/(\*\*[^*]+\*\*)/g).map((p, i) => p.startsWith('**') ? <b key={i}>{p.slice(2, -2)}</b> : <span key={i}>{p}</span>)}</>
+}
+
+const TAB_RU: Record<string, string> = { facts: 'Факты из ТЗ', twin: 'Двойник', learning: 'Обучение', stress: 'Испытания' }
+/** Что пользователь видит сейчас — передаём ИИ, чтобы он отвечал «про экран». */
+function screenView() {
+  const v = useView.getState()
+  return {
+    tab: TAB_RU[v.tab] ?? v.tab, date: longDate(v.date), time: clock(v.t), t: Math.floor(v.t),
+    scenario_name: v.scenario, selected_zone: v.selected ? ZONE_BY_ID[v.selected]?.name : undefined, selected_zone_id: v.selected ?? undefined,
+    incident: v.incidentText ?? undefined, stress: v.stressInfo ?? undefined,
+  }
 }
 
 export default function Copilot() {
@@ -38,7 +52,7 @@ export default function Copilot() {
     setInput('')
     setBusy(true)
     try {
-      const r: Reply = await fetch('/api/copilot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, history, offline, scenario }) }).then((x) => x.json())
+      const r: Reply = await fetch('/api/copilot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, history, offline, scenario, seed: seedFromDate(useView.getState().date), view: screenView() }) }).then((x) => x.json())
       setMsgs((m) => [...m, { role: 'assistant', text: r.answer, meta: r }])
       const focus = r.actions?.find((a) => a.type === 'focus')
       if (focus) {   // ответ двигает сцену: переходим в 3D и подлетаем к участку
