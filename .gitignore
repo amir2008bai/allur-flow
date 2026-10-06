@@ -10,3 +10,5 @@ dist/
 .DS_Store
 data/uploads/
 data/active_dataset.json
+*.sqlite-shm
+*.sqlite-wal
