@@ -108,11 +108,31 @@ def _paint_service(p: LineParams) -> LineParams:
     return p.with_(degradations=degs, forced_downs=p.forced_downs + (stop,))
 
 
+def _speed(station: str, k: float):
+    def f(p: LineParams) -> LineParams:
+        st = dict(p.stations)
+        st[station] = replace(st[station], cycle=st[station].cycle * k)
+        return p.with_(stations=st)
+    return f
+
+
+def _fast_repair(p: LineParams) -> LineParams:
+    """Дежурный наладчик на линии: ремонт в 2 раза быстрее на всех участках."""
+    return p.with_(stations={s: replace(sp, mttr=sp.mttr * 0.5) for s, sp in p.stations.items()})
+
+
+# Библиотека действий. Для каждой смены сервис сам считает все и показывает самые полезные.
 INTERVENTIONS = {
-    "paint_service": {"name": "Обслужить камеру окраски сейчас", "detail": "20 мин плановой остановки, затем брак и цикл возвращаются к норме",
-                      "apply": _paint_service},
-    "second_repair_post": {"name": "Второй пост точечного ремонта", "detail": "2 поста вместо 1, ремонт быстрее",
-                           "apply": lambda p: p.with_(repair_servers=2)},
-    "pbs_buffer": {"name": "+6 мест в буфере перед сборкой", "detail": "буфер окраска → сборка 18 вместо 12",
-                   "apply": lambda p: p.with_(buffer_cap={**p.buffer_cap, "b_paint_asm": p.buffer_cap["b_paint_asm"] + 6})},
+    "paint_service": {"name": "Обслужить камеру окраски сейчас", "detail": "20 мин плановой остановки, затем брак и цикл окраски возвращаются к норме",
+                      "apply": _paint_service, "target": "paint"},
+    "speed_assembly": {"name": "Ускорить сборку на 5%", "detail": "доп. оснастка или ещё один монтажник на самом загруженном посту",
+                       "apply": _speed("assembly", 0.95), "target": "assembly"},
+    "speed_welding": {"name": "Ускорить сварку на 5%", "detail": "оптимизировать траектории роботов (офлайн-программирование)",
+                      "apply": _speed("welding", 0.95), "target": "welding"},
+    "fast_repair": {"name": "Дежурный наладчик на линии", "detail": "ремонт и перезапуск после отказа — в 2 раза быстрее",
+                    "apply": _fast_repair, "target": None},
+    "pbs_buffer": {"name": "+6 мест в буфере перед сборкой", "detail": "буфер окраска → сборка 18 вместо 12 — сборка реже ждёт",
+                   "apply": lambda p: p.with_(buffer_cap={**p.buffer_cap, "b_paint_asm": p.buffer_cap["b_paint_asm"] + 6}), "target": "assembly"},
+    "second_repair_post": {"name": "Второй пост точечного ремонта", "detail": "2 поста вместо 1 — кузова с дефектом окраски быстрее возвращаются в поток",
+                           "apply": lambda p: p.with_(repair_servers=2), "target": "paint"},
 }

@@ -21,8 +21,15 @@ export default function Copilot() {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const scenario = useView((v) => v.scenario)
+  const question = useView((v) => v.question)
   const end = useRef<HTMLDivElement>(null)
   useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs, busy])
+  useEffect(() => {
+    if (!question) return
+    setOpen(true)
+    useView.getState().clearQuestion()
+    send(question, false)
+  }, [question]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = async (text: string, offline: boolean) => {
     if (!text.trim() || busy) return

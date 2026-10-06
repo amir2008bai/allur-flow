@@ -79,6 +79,9 @@ def _whatif(scenario: str, reps: int) -> dict:
     res["baseline"]["bottleneck"] = str(res["baseline"]["bottleneck"])
     for o in res["options"]:
         o["bottleneck_after"] = str(o["bottleneck_after"])
+        o["significant"] = bool(o["significant"]); o["closes_gap"] = bool(o["closes_gap"])
+    if res.get("combo"):
+        res["combo"]["closes_gap"] = bool(res["combo"]["closes_gap"])
     res["scenario"] = scenario
     res["source"] = "whatif"
     return res

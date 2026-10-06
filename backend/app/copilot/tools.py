@@ -40,10 +40,12 @@ def compare_actions() -> dict:
     scenario = CURRENT_SCENARIO.get()
     w = _whatif(scenario, 20)
     return {"source": "симуляция, 20 одинаковых прогонов", "scenario": scenario,
-            "сейчас_годных_за_смену": round(w["baseline"]["good_per_shift"], 1),
+            "сейчас_годных_за_смену": round(w["baseline"]["good_per_shift"], 1), "план_за_смену": w["plan_per_shift"],
+            "не_хватает_до_плана": round(w["gap_per_shift"], 1),
+            "лучшая_пара": ({"действия": w["combo"]["names"], "прирост": round(w["combo"]["delta_per_shift"], 1), "план_выполнен": w["combo"]["closes_gap"]} if w.get("combo") else None),
             "действия": [{"действие": o["name"], "прирост_машин_за_смену": round(o["delta_per_shift"], 1),
                           "интервал_95": [round(o["ci95"][0], 1), round(o["ci95"][1], 1)],
-                          "эффект_подтверждён": o["significant"]} for o in w["options"]]}
+                          "эффект_подтверждён": o["significant"], "выполняет_план": o["closes_gap"]} for o in w["options"] if o["significant"] and o["delta_per_shift"] > 0]}
 
 
 def get_paint_quality() -> dict:

@@ -22,6 +22,9 @@ interface ViewState {
   setTab: (t: string) => void
   date: string
   setDate: (d: string) => void
+  question: string | null
+  ask: (q: string) => void
+  clearQuestion: () => void
 }
 
 export const useView = create<ViewState>((set) => ({
@@ -35,6 +38,9 @@ export const useView = create<ViewState>((set) => ({
   setScenario: (scenario) => set({ scenario }),
   tab: 'facts',
   date: todayISO(),
+  question: null,
+  ask: (question) => set({ question }),
+  clearQuestion: () => set({ question: null }),
   setDate: (date) => set({ date }),
   setTab: (tab) => set({ tab }),
   setTouring: (touring) => set({ touring }),

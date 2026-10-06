@@ -45,7 +45,7 @@ def test_oee_labeled_as_assumption():
 
 def test_api_sim():
     c = TestClient(app)
-    assert len(c.get("/api/sim/meta").json()["interventions"]) == 3
+    assert len(c.get("/api/sim/meta").json()["interventions"]) == 6
     run = c.get("/api/sim/run", params={"scenario": "paint_degradation", "seed": 1}).json()
     assert run["source"] == "sim" and run["bottleneck"]["top"] == "paint"
     w = c.get("/api/sim/whatif", params={"reps": 10}).json()

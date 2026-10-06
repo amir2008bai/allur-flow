@@ -44,4 +44,20 @@ def compare(base: LineParams, intervention_ids: list[str], reps: int = 20, seed0
             "bottleneck_after": max(set(tops), key=tops.count),
         })
     out["options"].sort(key=lambda o: -o["delta_per_shift"])
+    plan = 120.0
+    out["plan_per_shift"] = plan
+    out["gap_per_shift"] = max(0.0, plan - out["baseline"]["good_per_shift"])
+    for o in out["options"]:
+        o["closes_gap"] = o["significant"] and o["good_per_shift"] >= plan
+    out["useful"] = [o["id"] for o in out["options"] if o["significant"] and o["delta_per_shift"] > 0]
+    # лучшая пара действий: закрывает ли она разрыв до плана
+    out["combo"] = None
+    if len(out["useful"]) >= 2:
+        a, b = out["useful"][:2]
+        p2 = INTERVENTIONS[b]["apply"](INTERVENTIONS[a]["apply"](base))
+        good = np.array([simulate(p2, s).good_out for s in seeds]) / shifts
+        m, lo, hi = paired_ci(good - b_good)
+        out["combo"] = {"ids": [a, b], "names": [INTERVENTIONS[a]["name"], INTERVENTIONS[b]["name"]],
+                        "good_per_shift": float(good.mean()), "delta_per_shift": m, "ci95": [lo, hi],
+                        "closes_gap": lo > 0 and float(good.mean()) >= plan}
     return out

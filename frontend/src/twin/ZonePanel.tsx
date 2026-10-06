@@ -2,6 +2,7 @@ import type { SimRun } from '../source'
 import { BUFFERS, STATE_HEX, STATE_RU, ZONE_BY_ID, type StationState } from './layout'
 import { useView } from './store'
 import { clock } from './Timeline'
+import { Sparkles } from 'lucide-react'
 
 export default function ZonePanel({ run }: { run: SimRun }) {
   const selected = useView((s) => s.selected)
@@ -56,7 +57,9 @@ export default function ZonePanel({ run }: { run: SimRun }) {
           )}
         </div>
       )}
-      <div className="mt-4 text-[11px] text-slate-400">Симуляция · компоновка цеха условная</div>
+      <button onClick={() => useView.getState().ask(`Что происходит на участке «${z.name}» и что сделать, чтобы он не задерживал линию?`)}
+        className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl bg-violet-50 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100"><Sparkles size={15} />Спросить ИИ про участок</button>
+      <div className="mt-3 text-[11px] text-slate-400">Симуляция · компоновка цеха условная</div>
     </div>
   )
 }

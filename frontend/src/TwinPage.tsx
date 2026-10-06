@@ -5,6 +5,7 @@ import Flow2D from './twin/Flow2D'
 import Plan2D from './twin/Plan2D'
 import CauseBanner from './twin/CauseBanner'
 import Futures from './twin/Futures'
+import Actions from './twin/Actions'
 import { ZONES } from './twin/layout'
 import Timeline from './twin/Timeline'
 import ZonePanel from './twin/ZonePanel'
@@ -128,31 +129,7 @@ export default function TwinPage() {
             <Tile label="OEE линии" value={fmt(Math.round(run.kpi.oee_pct))} unit="%" note="цель 85% · при допущенном цикле" tone={run.kpi.oee_pct < 85 ? 'warn' : undefined} />
           </div>
 
-          <div>
-            <h2 className="mb-3 text-lg font-semibold">Что будет, если…</h2>
-            {!whatif ? <div className="text-sm text-slate-500">Сравниваю действия на 20 прогонах…</div> : (
-              <div className="grid gap-4 lg:grid-cols-3">
-                {whatif.options.map((o, i) => (
-                  <Card key={o.id} className={`p-5 ${i === 0 && o.significant && o.delta_per_shift > 0 ? 'ring-2 ring-emerald-400' : ''}`}>
-                    {i === 0 && o.significant && o.delta_per_shift > 0 && <div className="mb-2 text-xs font-semibold text-emerald-600">Лучшее действие</div>}
-                    <div className="font-semibold">{o.name}</div>
-                    <div className="mt-2 flex items-baseline gap-1">
-                      <span className={`text-4xl font-semibold tracking-tight ${o.significant && o.delta_per_shift > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
-                        {o.delta_per_shift >= 0 ? '+' : ''}{fmt(Math.round(o.delta_per_shift * 10) / 10)}
-                      </span>
-                      <span className="text-sm text-slate-500">машин за смену</span>
-                    </div>
-                    <div className="mt-1 text-xs text-slate-500">
-                      {o.significant ? `точно в пределах ${fmt(Math.round(o.ci95[0] * 10) / 10)}…${fmt(Math.round(o.ci95[1] * 10) / 10)}` : 'эффект не подтверждён'}
-                    </div>
-                    <p className="mt-3 text-sm text-slate-600">{o.detail}</p>
-                    <button onClick={() => { setFutures(o.id); window.scrollTo({ top: 0, behavior: 'smooth' }) }} className="mt-3 flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900"><Columns2 size={13} />Показать два будущих →</button>
-                  </Card>
-                ))}
-              </div>
-            )}
-            <p className="mt-3 text-xs text-slate-500">Сравнение на {whatif?.reps ?? 20} одинаковых прогонах симуляции — это оценка на модели, а не гарантия на заводе.</p>
-          </div>
+          <Actions whatif={whatif} onFutures={(id) => { setFutures(id); window.scrollTo({ top: 0, behavior: 'smooth' }) }} />
 
           <Dashboard run={run} />
 

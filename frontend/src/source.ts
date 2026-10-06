@@ -46,5 +46,7 @@ export interface SimRun {
 export interface WhatIf {
   reps: number; scenario: string
   baseline: { good_per_shift: number; bottleneck: string }
-  options: { id: string; name: string; detail: string; good_per_shift: number; delta_per_shift: number; ci95: [number, number]; significant: boolean; bottleneck_after: string }[]
+  options: { id: string; name: string; detail: string; good_per_shift: number; delta_per_shift: number; ci95: [number, number]; significant: boolean; closes_gap: boolean; bottleneck_after: string }[]
+  plan_per_shift: number; gap_per_shift: number
+  combo: { ids: string[]; names: string[]; good_per_shift: number; delta_per_shift: number; ci95: [number, number]; closes_gap: boolean } | null
 }
