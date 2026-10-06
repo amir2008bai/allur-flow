@@ -130,7 +130,7 @@ function ForecastBlock() {
           <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Big label="Ошибка меньше, чем без обучения" value={`−${Math.round(100 * f.multi_seed.gain_vs_frozen)}%`} note={`в ${f.multi_seed.beats_frozen} из ${f.multi_seed.seeds} прогонов`} tone="good" />
             <Big label="Ошибка самообучения" value={f.multi_seed.mae_after_drift.served.toFixed(1).replace('.', ',')} note="машин за 2 ч, после смены режима" />
-            <Big label="«Как в прошлые 2 ч»" value={f.multi_seed.mae_after_drift.naive.toFixed(1).replace('.', ',')} note={`в среднем на ${Math.round(100 * f.multi_seed.gain_vs_naive)}% хуже · обогнали в ${f.multi_seed.beats_naive} из ${f.multi_seed.seeds}`} tone="muted" />
+            <Big label="«Как в прошлые 2 ч»" value={f.multi_seed.mae_after_drift.naive.toFixed(1).replace('.', ',')} note={`самообучение точнее на ${Math.round(100 * f.multi_seed.gain_vs_naive)}% · лучше в ${f.multi_seed.beats_naive} из ${f.multi_seed.seeds}`} tone="muted" />
             <Big label="Текущая модель" value={f.version} note={`${f.events.filter((e) => e.type === 'promotion').length} автозамены`} />
           </div>
           <ReactECharts option={option} style={{ height: 230 }} notMerge className="mt-3" />
