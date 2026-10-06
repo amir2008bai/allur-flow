@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import FactsPage from './FactsPage'
 import TwinPage from './TwinPage'
@@ -34,32 +35,39 @@ function MainApp() {
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-2.5">
-            <div className="grid h-8 w-8 place-items-center rounded-lg bg-slate-900 text-sm font-bold text-white">A</div>
-            <div className="leading-tight">
-              <div className="font-semibold">Allur Flow</div>
+      <header className="sticky top-0 z-20 border-b border-black/5 bg-white/70 backdrop-blur-2xl backdrop-saturate-150">
+        <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-2.5 sm:px-6">
+          <div className="flex shrink-0 items-center gap-2.5">
+            <div className="grid h-8 w-8 place-items-center rounded-[10px] bg-gradient-to-br from-slate-800 to-slate-950 text-sm font-bold text-white shadow-sm">A</div>
+            <div className="hidden leading-tight sm:block">
+              <div className="text-[15px] font-semibold tracking-tight">Allur Flow</div>
               <div className="text-[11px] text-slate-500">Цифровой двойник · Костанай</div>
             </div>
           </div>
-          <nav className="flex gap-1 overflow-x-auto [scrollbar-width:none]">
+          {/* сегментированный переключатель в стиле Apple: «пилюля» плавно переезжает */}
+          <nav className="mx-auto flex gap-0.5 overflow-x-auto rounded-full bg-slate-900/[0.05] p-1 [scrollbar-width:none]">
             {TABS.map((t) => (
-              <button key={t.id} disabled={!t.ready} onClick={() => setTab(t.id)}
-                className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm ${tab === t.id ? 'bg-slate-100 font-medium text-slate-900' : t.ready ? 'text-slate-600 hover:bg-slate-50' : 'cursor-not-allowed text-slate-400'}`}>
-                {t.label}{!t.ready && <span className="ml-1 text-[10px]">скоро</span>}
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className={`relative whitespace-nowrap rounded-full px-4 py-1.5 text-[13px] font-medium ${tab === t.id ? 'text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}>
+                {tab === t.id && <motion.span layoutId="tab-pill" className="absolute inset-0 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.12)]" transition={{ type: 'spring', stiffness: 500, damping: 38 }} />}
+                <span className="relative">{t.label}</span>
               </button>
             ))}
           </nav>
+          <div className="hidden w-[120px] shrink-0 lg:block" />
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        {tab === 'twin' && <TwinPage />}
-        {tab === 'learning' && <LearningPage />}
-        {tab === 'stress' && <StressPage />}
-        {tab === 'facts' && error && <div className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</div>}
-        {tab === 'facts' && !data && !error && <div className="text-sm text-slate-500">Загрузка данных…</div>}
-        {tab === 'facts' && data && <FactsPage facts={data.facts} findings={data.findings} />}
+        <AnimatePresence mode="wait">
+          <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}>
+            {tab === 'twin' && <TwinPage />}
+            {tab === 'learning' && <LearningPage />}
+            {tab === 'stress' && <StressPage />}
+            {tab === 'facts' && error && <div className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+            {tab === 'facts' && !data && !error && <div className="text-sm text-slate-500">Загрузка данных…</div>}
+            {tab === 'facts' && data && <FactsPage facts={data.facts} findings={data.findings} />}
+          </motion.div>
+        </AnimatePresence>
       </main>
       <Copilot />
     </div>

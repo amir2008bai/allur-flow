@@ -31,7 +31,7 @@ export const SEVERITY: Record<Severity, { dot: string; ring: string; label: stri
 }
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-2xl bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_8px_rgba(16,24,40,0.04)] ring-1 ring-slate-200/70 ${className}`}>{children}</div>
+  return <div className={`rounded-[22px] bg-white shadow-[0_1px_1px_rgba(0,0,0,0.03),0_8px_24px_-12px_rgba(15,23,42,0.12)] ring-1 ring-black/[0.06] ${className}`}>{children}</div>
 }
 
 export function fmt(v: number | string) {
