@@ -45,12 +45,13 @@ def con():
 def forecast_payload() -> dict:
     show = run_learning(SHOWCASE_SEED)
     runs = [run_learning(s)["summary"] for s in range(11, 21)]
-    agg = {k: float(np.mean([r[k]["mae_after_drift"] for r in runs])) for k in ("champion", "frozen", "naive", "plan")}
+    agg = {k: float(np.mean([r[k]["mae_after_drift"] for r in runs])) for k in ("champion", "served", "frozen", "naive", "plan")}
     show["multi_seed"] = {
         "seeds": 10, "mae_after_drift": agg,
-        "beats_frozen": sum(r["champion"]["mae_after_drift"] < r["frozen"]["mae_after_drift"] for r in runs),
-        "beats_naive": sum(r["champion"]["mae_after_drift"] < r["naive"]["mae_after_drift"] for r in runs),
-        "gain_vs_frozen": 1 - agg["champion"] / agg["frozen"],
+        "beats_frozen": sum(r["served"]["mae_after_drift"] < r["frozen"]["mae_after_drift"] for r in runs),
+        "beats_naive": sum(r["served"]["mae_after_drift"] < r["naive"]["mae_after_drift"] for r in runs),
+        "gain_vs_frozen": 1 - agg["served"] / agg["frozen"],
+        "gain_vs_naive": 1 - agg["served"] / agg["naive"],
     }
     return show
 

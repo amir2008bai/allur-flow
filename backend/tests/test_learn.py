@@ -24,6 +24,26 @@ def test_online_learning_beats_frozen_on_average():
     assert champ < frozen
 
 
+def test_no_explosion_and_sane_predictions():
+    for seed in range(11, 21):
+        tl = run_learning(seed)["timeline"]
+        assert max(r["champion"] for r in tl) <= 60 and min(r["champion"] for r in tl) >= 0
+
+
+def test_small_data_falls_back_to_simple_forecast():
+    # на первых 12 часах модель ещё не доказала точность — пользователю показывается простой прогноз
+    for seed in range(11, 21):
+        tl = run_learning(seed, n_max=24)["timeline"]
+        assert all(r["served"] == r["naive"] for r in tl[:20])
+
+
+def test_served_forecast_not_worse_than_simple_on_average():
+    runs = [run_learning(s)["summary"] for s in range(11, 21)]
+    served = np.mean([r["served"]["mae_after_drift"] for r in runs])
+    naive = np.mean([r["naive"]["mae_after_drift"] for r in runs])
+    assert served <= naive
+
+
 def test_alert_votes_improve_precision():
     L = AlertLearner()
     start = L.state()["start"]["precision"]

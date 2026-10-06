@@ -5,7 +5,14 @@
   2) интервал проходит, приходит факт → считаем ошибку каждой модели;
   3) учатся только онлайн-модели (learn_one); «замороженная» копия не учится — это контроль;
   4) детектор дрейфа следит за ошибкой основной модели; при дрейфе запускается свежий претендент;
-  5) каждые CHECK интервалов претендент сравнивается с основной на одинаковых последних интервалах.
+  5) каждые CHECK интервалов претендент сравнивается с основной на одинаковых последних интервалах;
+  6) ЗАЩИТА: пользователю показывается прогноз модели, только если на последних фактах она точнее
+     простого прогноза «как в прошлые 2 ч». Пока модель учится или после смены режима — показываем простой.
+
+Почему так (см. scripts/diag_learning.py, diag_variants.py):
+  - старый SGD «взрывался»: на старте разброс признака почти нулевой → после нормировки z до −34 →
+    огромный градиент → прогнозы до 468 машин вместо ~30. Починка: обрезка z до ±3, clip_gradient, малый шаг;
+  - на 4–28 фактах любая модель хуже простого прогноза — отсюда защита п.6.
 """
 from __future__ import annotations
 
@@ -13,7 +20,7 @@ import copy
 from collections import deque
 
 import numpy as np
-from river import drift, linear_model, preprocessing
+from river import compose, drift, linear_model, optim, preprocessing
 
 from .stream import DRIFT_AT, HORIZON, INTERVAL, Snapshot, emulate, interval_snapshots
 
@@ -25,23 +32,34 @@ CHECK = 4        # как часто сравнивать претендента
 MARGIN = 0.05    # претендент должен быть лучше на 5%
 
 
-def make_model(smoothing: float = 0.98):
-    """Онлайн байесовская линейная регрессия с забыванием старых данных (устойчива, без расхождения).
-    Учится ПОПРАВКЕ к наивному прогнозу: y − «выпуск за прошлые 2 часа»."""
-    return preprocessing.StandardScaler() | linear_model.BayesianLinearRegression(alpha=1, beta=1, smoothing=smoothing)
+def _clip_z(x: dict) -> dict:
+    return {k: max(-3.0, min(3.0, v)) for k, v in x.items()}
+
+
+def make_blr(smoothing: float = 0.98):
+    """Байесовская линейная регрессия с забыванием — лучшая на длинной дистанции.
+    Учится ПОПРАВКЕ к простому прогнозу: y − «выпуск за прошлые 2 часа»."""
+    return preprocessing.StandardScaler() | compose.FuncTransformer(_clip_z) |         linear_model.BayesianLinearRegression(alpha=1, beta=1, smoothing=smoothing)
+
+
+def make_sgd():
+    """Починенный онлайн-SGD: обрезка признаков и градиента, малый шаг — лучший на малых данных."""
+    return preprocessing.StandardScaler() | compose.FuncTransformer(_clip_z) |         linear_model.LinearRegression(optimizer=optim.SGD(0.005), intercept_lr=0.005, clip_gradient=1.0, l2=0.001)
 
 
 def clip(v: float | None) -> float:
     return float(min(max(v or 0.0, 0.0), 2 * PLAN))
 
 
-def run_learning(seed: int = 11) -> dict:
-    snaps: list[Snapshot] = interval_snapshots(emulate(seed))
-    champion, challenger = make_model(0.98), make_model(0.95)
+def run_learning(seed: int = 11, n_max: int | None = None) -> dict:
+    snaps: list[Snapshot] = interval_snapshots(emulate(seed))[:n_max]
+    champion, challenger = make_blr(0.98), make_sgd()
+    serving = "naive"
     frozen = None
     version, champ_name = 1, "v1"
     detector = drift.PageHinkley(min_instances=8, delta=0.5, threshold=25.0, mode="up")
-    errs = {k: deque(maxlen=WINDOW) for k in ("champion", "challenger", "frozen", "naive", "plan")}
+    errs = {k: deque(maxlen=WINDOW) for k in ("champion", "challenger", "frozen", "naive", "plan", "served")}
+    gate_c, gate_n = deque(maxlen=WINDOW), deque(maxlen=WINDOW)  # для защиты: модель против простого
     pair_c, pair_h = deque(maxlen=WINDOW), deque(maxlen=WINDOW)  # ошибки на одних и тех же интервалах
     timeline, events = [], []
     ledger = []
@@ -55,8 +73,9 @@ def run_learning(seed: int = 11) -> dict:
             "naive": s.x["last_h"],
             "plan": PLAN,
         }
+        preds["served"] = preds["champion"] if serving == "model" else preds["naive"]
         ledger.append({"issued_at": s.t, "horizon_start": s.t, "horizon_end": s.t + HORIZON,
-                       "y_hat": round(preds["champion"], 2), "model_version": champ_name})
+                       "y_hat": round(preds["served"], 2), "model_version": champ_name if serving == "model" else "простой"})
         pending.append((i, s, preds))
         row = {"t": s.t, "target_t": s.t + HORIZON, **{k: (round(v, 2) if v is not None else None) for k, v in preds.items()}, "y": s.y}
         # 2) пришёл факт по прогнозу, выпущенному DELAY интервалов назад
@@ -67,12 +86,14 @@ def run_learning(seed: int = 11) -> dict:
                 for k, v in pj.items():
                     if v is not None:
                         errs[k].append(abs(v - y))
+                gate_c.append(abs(pj["champion"] - y))
+                gate_n.append(abs(pj["naive"] - y))
                 pair_c.append(abs(pj["champion"] - y))
                 pair_h.append(abs(pj["challenger"] - y))
                 detector.update(abs(pj["champion"] - y))
                 if detector.drift_detected:
                     events.append({"t": s.t, "type": "drift", "text": "Ошибка прогноза выросла — режим линии изменился"})
-                    challenger = make_model(0.95)   # свежий претендент учится только на новом режиме
+                    challenger = make_blr(0.95)   # свежий претендент учится только на новом режиме
                     pair_c.clear(); pair_h.clear()
                     detector = drift.PageHinkley(min_instances=8, delta=0.5, threshold=25.0, mode="up")
                 if len(pair_h) >= 8 and i % CHECK == 0 and np.mean(pair_h) < (1 - MARGIN) * np.mean(pair_c):
@@ -83,6 +104,16 @@ def run_learning(seed: int = 11) -> dict:
                     events.append({"t": s.t, "type": "promotion",
                                    "text": f"Претендент точнее ({np.mean(pair_h):.1f} против {np.mean(pair_c):.1f} машин) → {champ_name} вместо {old}"})
                     pair_c, pair_h = pair_h, pair_c
+                    gate_c = deque(pair_c, maxlen=WINDOW)
+                # 6) защита: показываем модель, только если она точнее простого прогноза на последних фактах
+                if len(gate_c) >= 8:
+                    mc, mn = np.mean(gate_c), np.mean(gate_n)
+                    if serving != "model" and mc < 0.97 * mn:  # запас 3%, чтобы не «мигать»
+                        serving = "model"
+                        events.append({"t": s.t, "type": "serve_model", "text": f"Модель точнее простого прогноза ({np.mean(gate_c):.1f} против {np.mean(gate_n):.1f}) — показываем её"})
+                    elif serving == "model" and mc > 1.03 * mn:
+                        serving = "naive"
+                        events.append({"t": s.t, "type": "serve_naive", "text": f"Модель стала хуже простого ({np.mean(gate_c):.1f} против {np.mean(gate_n):.1f}) — временно показываем простой прогноз"})
             # 3) обучение только после факта
             champion.learn_one(sj.x, y - sj.x["last_h"])
             challenger.learn_one(sj.x, y - sj.x["last_h"])
@@ -91,15 +122,18 @@ def run_learning(seed: int = 11) -> dict:
                 events.append({"t": s.t, "type": "freeze", "text": "Сделана замороженная копия модели для сравнения"})
         row.update({f"mae_{k}": (round(float(np.mean(v)), 2) if len(v) else None) for k, v in errs.items()})
         row["version"] = champ_name
+        row["serving"] = serving
         timeline.append(row)
 
     def mae(key, after=None):
         vals = [abs(r[key] - r["y"]) for r in timeline[WARMUP:] if r[key] is not None and (after is None or r["t"] >= after)]
+        if not vals and after is not None:
+            return mae(key)
         return float(np.mean(vals)) if vals else None
 
-    summary = {k: {"mae_all": mae(k), "mae_after_drift": mae(k, DRIFT_AT)} for k in ("champion", "frozen", "naive", "plan")}
+    summary = {k: {"mae_all": mae(k), "mae_after_drift": mae(k, DRIFT_AT)} for k in ("champion", "served", "frozen", "naive", "plan")}
     best_base = min(summary["naive"]["mae_after_drift"], summary["plan"]["mae_after_drift"])
-    summary["skill_vs_baseline"] = 1 - summary["champion"]["mae_after_drift"] / best_base
+    summary["skill_vs_baseline"] = 1 - summary["served"]["mae_after_drift"] / best_base
     return {"source": "forecast", "interval_min": INTERVAL, "horizon_min": HORIZON, "plan": PLAN, "drift_at": DRIFT_AT, "warmup": WARMUP,
             "timeline": timeline, "events": events, "summary": summary, "version": champ_name,
             "ledger_size": len(ledger), "note": "Поток из эмулятора завода (симуляция). Деградация окраски скрыта от моделей."}

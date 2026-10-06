@@ -8,12 +8,12 @@ export interface AlertsState {
 }
 export interface Card { id: string; type: string; title: string; text: string; time: string; model_confidence: number; left: number }
 
-export interface ForecastRow { t: number; y: number; champion: number; frozen: number | null; naive: number; plan: number; mae_champion: number | null; mae_frozen: number | null; mae_naive: number | null; version: string }
+export interface ForecastRow { t: number; y: number; champion: number; frozen: number | null; naive: number; plan: number; mae_champion: number | null; mae_frozen: number | null; mae_naive: number | null; mae_served: number | null; served: number; serving: 'model' | 'naive'; version: string }
 export interface ForecastPayload {
   interval_min: number; horizon_min: number; plan: number; drift_at: number; warmup: number; version: string; note: string
   timeline: ForecastRow[]
-  events: { t: number; type: 'drift' | 'promotion' | 'freeze'; text: string }[]
-  multi_seed: { seeds: number; mae_after_drift: Record<string, number>; beats_frozen: number; beats_naive: number; gain_vs_frozen: number }
+  events: { t: number; type: 'drift' | 'promotion' | 'freeze' | 'serve_model' | 'serve_naive'; text: string }[]
+  multi_seed: { seeds: number; mae_after_drift: Record<string, number>; beats_frozen: number; beats_naive: number; gain_vs_frozen: number; gain_vs_naive: number }
 }
 export interface CalibVersion { version: number; trigger: string; mean: number; lo90: number; hi90: number; p_above_norm: number; n: number; defects: number; forecast: { good_per_shift: number; lo: number; hi: number } }
 export interface CalibState { norm: number; current: CalibVersion; history: CalibVersion[]; observations: { produced: number; defects: number; source: string; who: string }[] }

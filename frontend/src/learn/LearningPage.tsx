@@ -96,9 +96,9 @@ function ForecastBlock() {
   useEffect(() => { api.forecast().then(setF).catch(() => {}) }, [])
   const option = useMemo(() => {
     if (!f) return null
-    const rows = f.timeline.filter((r) => r.mae_champion != null)
+    const rows = f.timeline.filter((r) => r.mae_served != null)
     const day = (t: number) => `д${Math.floor(t / 960) + 1} ${clock(t % 960)}`
-    const marks = f.events.filter((e) => e.type !== 'freeze').map((e) => ({ xAxis: e.t, label: { show: true, formatter: e.type === 'drift' ? 'дрейф' : 'новая версия', color: e.type === 'drift' ? '#dc2626' : '#16a34a', fontSize: 10 }, lineStyle: { color: e.type === 'drift' ? '#fca5a5' : '#86efac', type: 'solid' } }))
+    const marks = f.events.filter((e) => e.type === 'drift' || e.type === 'promotion').map((e) => ({ xAxis: e.t, label: { show: true, formatter: e.type === 'drift' ? 'дрейф' : 'новая версия', color: e.type === 'drift' ? '#dc2626' : '#16a34a', fontSize: 10 }, lineStyle: { color: e.type === 'drift' ? '#fca5a5' : '#86efac', type: 'solid' } }))
     return {
       animation: false,
       grid: { left: 36, right: 12, top: 28, bottom: 26 },
@@ -107,7 +107,7 @@ function ForecastBlock() {
       xAxis: { type: 'value', min: rows[0]?.t, max: rows[rows.length - 1]?.t, axisLabel: { ...AX, formatter: day }, splitLine: { show: false } },
       yAxis: { type: 'value', name: 'ошибка, машин', nameTextStyle: AX, axisLabel: AX, splitLine: { lineStyle: { color: '#eef1f5' } } },
       series: [
-        { name: 'Самообучение', type: 'line', showSymbol: false, lineStyle: { color: '#16a34a', width: 2.5 }, data: rows.map((r) => [r.t, r.mae_champion]),
+        { name: 'Самообучение', type: 'line', showSymbol: false, lineStyle: { color: '#16a34a', width: 2.5 }, data: rows.map((r) => [r.t, r.mae_served]),
           markLine: { symbol: 'none', silent: true, data: marks },
           markArea: { silent: true, itemStyle: { color: 'rgba(239,68,68,0.05)' }, data: [[{ xAxis: f.drift_at }, { xAxis: rows[rows.length - 1]?.t }]] } },
         { name: 'Без обучения', type: 'line', showSymbol: false, lineStyle: { color: '#f59e0b', width: 1.5 }, data: rows.map((r) => [r.t, r.mae_frozen]) },
@@ -129,17 +129,18 @@ function ForecastBlock() {
         <>
           <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Big label="Ошибка меньше, чем без обучения" value={`−${Math.round(100 * f.multi_seed.gain_vs_frozen)}%`} note={`в ${f.multi_seed.beats_frozen} из ${f.multi_seed.seeds} прогонов`} tone="good" />
-            <Big label="Ошибка самообучения" value={f.multi_seed.mae_after_drift.champion.toFixed(1).replace('.', ',')} note="машин за 2 ч, после смены режима" />
-            <Big label="«Как в прошлые 2 ч»" value={f.multi_seed.mae_after_drift.naive.toFixed(1).replace('.', ',')} note={`обогнали в ${f.multi_seed.beats_naive} из ${f.multi_seed.seeds}`} tone="muted" />
+            <Big label="Ошибка самообучения" value={f.multi_seed.mae_after_drift.served.toFixed(1).replace('.', ',')} note="машин за 2 ч, после смены режима" />
+            <Big label="«Как в прошлые 2 ч»" value={f.multi_seed.mae_after_drift.naive.toFixed(1).replace('.', ',')} note={`в среднем на ${Math.round(100 * f.multi_seed.gain_vs_naive)}% хуже · обогнали в ${f.multi_seed.beats_naive} из ${f.multi_seed.seeds}`} tone="muted" />
             <Big label="Текущая модель" value={f.version} note={`${f.events.filter((e) => e.type === 'promotion').length} автозамены`} />
           </div>
           <ReactECharts option={option} style={{ height: 230 }} notMerge className="mt-3" />
           <ul className="mt-2 space-y-1 text-xs text-slate-500">
-            {f.events.filter((e) => e.type !== 'freeze').map((e, i) => (
+            {f.events.filter((e) => e.type === 'drift' || e.type === 'promotion').map((e, i) => (
               <li key={i}><span className={e.type === 'drift' ? 'text-red-600' : 'text-emerald-600'}>●</span> день {Math.floor(e.t / 960) + 1}, {clock(e.t % 960)} — {e.text}</li>
             ))}
           </ul>
-          <p className="mt-2 text-xs text-slate-400">{f.note} Красная зона — после скрытой деградации окраски. Сравнение на 10 разных прогонах, а не на одном удачном.</p>
+          <p className="mt-2 text-xs text-slate-500">Защита: прогноз модели показывается, только когда на последних фактах она точнее простого прогноза «как в прошлые 2 ч». Пока модель учится — показываем простой. Сейчас: <b>{f.timeline[f.timeline.length - 1].serving === 'model' ? `модель ${f.version}` : 'простой прогноз'}</b>.</p>
+          <p className="mt-1 text-xs text-slate-400">{f.note} Красная зона — после скрытой деградации окраски. Сравнение на 10 разных прогонах, а не на одном удачном.</p>
         </>
       )}
     </Card>
