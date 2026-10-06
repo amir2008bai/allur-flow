@@ -31,10 +31,24 @@ def test_no_explosion_and_sane_predictions():
 
 
 def test_small_data_falls_back_to_simple_forecast():
-    # на первых 12 часах модель ещё не доказала точность — пользователю показывается простой прогноз
+    # без проверенной глобальной модели: на первых 12 часах онлайн-модель не доказала точность → простой прогноз
     for seed in range(11, 21):
-        tl = run_learning(seed, n_max=24)["timeline"]
+        tl = run_learning(seed, n_max=24, use_global=False)["timeline"]
         assert all(r["served"] == r["naive"] for r in tl[:20])
+
+
+def test_validated_global_model_served_from_start_and_interval_honest():
+    # глобальная модель проверена на отложенных потоках (реестр) → показывается сразу; интервал покрывает ~90%
+    from app.learn import global_model
+    if global_model.current_booster() is None:
+        global_model.train(30)
+    runs = [run_learning(s) for s in range(11, 21)]
+    assert all(r["timeline"][0]["served"] == r["timeline"][0]["lgbm"] for r in runs)
+    cov = np.mean([r["summary"]["interval"]["coverage"] for r in runs])
+    assert 0.8 <= cov <= 0.97
+    lgbm = np.mean([r["summary"]["lgbm"]["mae_after_drift"] for r in runs])
+    naive = np.mean([r["summary"]["naive"]["mae_after_drift"] for r in runs])
+    assert lgbm < 0.85 * naive
 
 
 def test_served_forecast_not_worse_than_simple_on_average():

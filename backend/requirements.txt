@@ -10,3 +10,4 @@ simpy==4.1.2
 uvicorn==0.54.0
 openpyxl==3.1.5
 python-multipart==0.0.32
+lightgbm==4.7.0

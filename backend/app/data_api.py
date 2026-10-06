@@ -39,3 +39,22 @@ async def activate(file: UploadFile = File(...)) -> dict:
 @router.post("/reset")
 def reset() -> dict:
     return dataset.reset_to_test()
+
+
+@router.get("/twin-fit")
+def twin_fit() -> dict:
+    """Насколько двойник совпадает с журналом простоев и что изменила бы подгонка (без применения)."""
+    from .dataset import status
+    st = status()
+    return {**_fit_cached(st["file"], str(st.get("activated_at"))), "dataset": st["file"], "is_test": st.get("is_test", True)}
+
+
+from functools import lru_cache  # noqa: E402
+
+
+@lru_cache(maxsize=4)
+def _fit_cached(file: str, activated: str) -> dict:
+    from .dataset import active_facts
+    from .sim.params import BASE
+    from .twin_calib import fit
+    return fit(active_facts(), BASE, apply=False)

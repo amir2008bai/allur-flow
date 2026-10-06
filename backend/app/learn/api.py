@@ -45,13 +45,18 @@ def con():
 def forecast_payload() -> dict:
     show = run_learning(SHOWCASE_SEED)
     runs = [run_learning(s)["summary"] for s in range(11, 21)]
-    agg = {k: float(np.mean([r[k]["mae_after_drift"] for r in runs])) for k in ("champion", "served", "frozen", "naive", "plan")}
+    keys = [k for k in ("champion", "served", "frozen", "naive", "plan", "tsfm", "chronos", "lgbm", "ens") if all(k in r for r in runs)]
+    agg = {k: float(np.mean([r[k]["mae_after_drift"] for r in runs])) for k in keys}
     show["multi_seed"] = {
         "seeds": 10, "mae_after_drift": agg,
         "beats_frozen": sum(r["served"]["mae_after_drift"] < r["frozen"]["mae_after_drift"] for r in runs),
         "beats_naive": sum(r["served"]["mae_after_drift"] < r["naive"]["mae_after_drift"] for r in runs),
         "gain_vs_frozen": 1 - agg["served"] / agg["frozen"],
         "gain_vs_naive": 1 - agg["served"] / agg["naive"],
+        "interval": {"target": runs[0]["interval"]["target"],
+                     "coverage": float(np.mean([r["interval"]["coverage"] for r in runs])),
+                     "coverage_after_drift": float(np.mean([r["interval"]["coverage_after_drift"] for r in runs])),
+                     "width": float(np.mean([r["interval"]["width"] for r in runs]))},
     }
     return show
 
@@ -81,7 +86,22 @@ def tsfm_summary() -> dict | None:
 
 @router.get("/forecast")
 def forecast() -> dict:
-    return {**forecast_payload(), "tsfm": tsfm_summary()}
+    from . import global_model
+    return {**forecast_payload(), "tsfm": tsfm_summary(), "global": global_model.status()}
+
+
+@router.get("/retrain")
+def retrain_status() -> dict:
+    from . import global_model
+    return global_model.status()
+
+
+@router.post("/retrain")
+def retrain(runs: int = 400) -> dict:
+    """Дообучить глобальную модель на большом наборе смоделированных смен (в фоне)."""
+    from . import global_model
+    started = global_model.train_async(max(20, min(runs, 3000)), on_done=lambda e: forecast_payload.cache_clear())
+    return {"started": started, **global_model.status()}
 
 
 class CalibIn(BaseModel):

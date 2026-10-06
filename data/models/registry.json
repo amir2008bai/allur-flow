@@ -1,0 +1,44 @@
+{
+ "current": 2,
+ "versions": [
+  {
+   "version": 1,
+   "file": "lgbm_v1.txt",
+   "trained_at": 1791312516.1598723,
+   "runs": 50,
+   "rows": 4450,
+   "days": 150,
+   "holdout_mae": 2.85928184807083,
+   "holdout_mae_naive": 4.027450980392157,
+   "seconds": 6.3,
+   "promoted": true,
+   "verdict": "стала основной"
+  },
+  {
+   "version": 2,
+   "file": "lgbm_v2.txt",
+   "trained_at": 1791312551.329174,
+   "runs": 400,
+   "rows": 35600,
+   "days": 1200,
+   "holdout_mae": 2.6841722825241554,
+   "holdout_mae_naive": 4.027450980392157,
+   "seconds": 35.2,
+   "promoted": true,
+   "verdict": "точнее v1 → стала основной"
+  },
+  {
+   "version": 3,
+   "file": "lgbm_v3.txt",
+   "trained_at": 1791312638.6166606,
+   "runs": 1000,
+   "rows": 89000,
+   "days": 3000,
+   "holdout_mae": 2.6449466999210105,
+   "holdout_mae_naive": 4.027450980392157,
+   "seconds": 79.3,
+   "promoted": false,
+   "verdict": "не точнее v2 на 3% → осталась претендентом"
+  }
+ ]
+}

@@ -98,6 +98,9 @@ def calibrate(facts: Facts) -> dict:
         if q:
             defect[a] = sum(x.defects for x in q) / max(1, sum(x.produced for x in q))
             st[a] = replace(st[a], defect_p=defect[a])
+    # надёжность участков (MTBF/MTTR) — по журналу внеплановых простоев
+    from .twin_calib import fit
+    reliability = fit(facts, BASE, apply=True)
     # темп: средний факт строки на выходе (сборка, иначе любая линия), приведённый к 8 ч
     rows = [x for x in facts.lines if x.area == "assembly"] or facts.lines
     target = float(np.mean([x.fact * 8 / max(1e-6, x.runtime_h) * x.runtime_h / 8 for x in rows]))
@@ -111,7 +114,7 @@ def calibrate(facts: Facts) -> dict:
         st[a] = replace(st[a], cycle=_ORIG[a].cycle * k)
     good = float(np.mean([simulate(BASE, 300 + s).good_out / 2 for s in range(8)]))
     return {"target_per_shift": round(target, 1), "model_per_shift": round(good, 1), "cycle_scale": round(k, 3),
-            "defect_pct": {a: round(100 * v, 2) for a, v in defect.items()}}
+            "defect_pct": {a: round(100 * v, 2) for a, v in defect.items()}, "reliability": reliability}
 
 
 def _reload() -> dict:

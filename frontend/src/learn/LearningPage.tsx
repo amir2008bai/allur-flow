@@ -7,7 +7,7 @@ import { addDays, shortDate, todayISO } from '../dates'
 const START = addDays(todayISO(), -4)  // 5 дней потока заканчиваются сегодня
 const dayLabel = (t: number) => shortDate(addDays(START, Math.floor(t / 960)))
 import { Card, SourceBadge } from '../ui'
-import { api, pct, type AlertsState, type CalibState, type CameraLog, type ForecastPayload } from './api'
+import { api, pct, type AlertsState, type CalibState, type CameraLog, type ForecastPayload, type GlobalState, type TwinFit } from './api'
 
 const AX = { color: '#94a3b8', fontSize: 10 }
 const num = (x: number, d = 1) => x.toFixed(d).replace('.', ',')
@@ -123,15 +123,40 @@ function JuryBlock() {
 }
 
 /* ───────────── 2. Прогноз выпуска учится сам ───────────── */
+const MODEL_RU: Record<string, string> = {
+  lgbm: 'LightGBM · большой набор смен', ens: 'Ансамбль моделей', tsfm: 'TimesFM 3.0 · Google', chronos: 'Chronos-2 · Amazon',
+  champion: 'Онлайн-модель · River', frozen: 'Без дообучения', naive: 'Простой «как 2 ч назад»',
+}
+const SERVING_RU: Record<string, string> = { lgbm: 'LightGBM', ens: 'ансамбль', tsfm: 'TimesFM 3.0', model: 'онлайн-модель', naive: 'простой' }
+
 function ForecastBlock() {
   const [f, setF] = useState<ForecastPayload | null>(null)
+  const [view, setView] = useState<'band' | 'error'>('band')
   useEffect(() => { api.forecast().then(setF).catch(() => {}) }, [])
   const option = useMemo(() => {
     if (!f) return null
+    const vline = (t: number, color: string) => ({ xAxis: t, lineStyle: { color, type: 'solid', width: 1.5 }, label: { show: false } })
+    if (view === 'band') {
+      // последние полтора дня: коридор, прогноз и факт — по моменту, НА который прогноз
+      const rows = f.timeline.filter((r) => r.lo != null && r.hi != null).slice(-48)
+      const t0 = rows[0]?.target_t, t1 = rows[rows.length - 1]?.target_t
+      return {
+        animation: false,
+        grid: { left: 34, right: 8, top: 10, bottom: 22 },
+        tooltip: { trigger: 'axis', valueFormatter: (v: number) => (v == null ? '—' : `${num(v)} маш.`) },
+        xAxis: { type: 'value', min: t0, max: t1, axisLabel: { ...AX, formatter: (t: number) => `${dayLabel(t)} ${clock(t % 960)}` }, splitLine: { show: false } },
+        yAxis: { type: 'value', min: 0, axisLabel: AX, splitLine: { lineStyle: { color: '#eef1f5' } } },
+        series: [
+          { name: 'низ', type: 'line', stack: 'band', showSymbol: false, lineStyle: { opacity: 0 }, data: rows.map((r) => [r.target_t, r.lo]), tooltip: { show: false } },
+          { name: 'Коридор 90%', type: 'line', stack: 'band', showSymbol: false, lineStyle: { opacity: 0 }, areaStyle: { color: 'rgba(22,163,74,0.12)' }, data: rows.map((r) => [r.target_t, (r.hi ?? 0) - (r.lo ?? 0)]), tooltip: { show: false } },
+          { name: 'Прогноз', type: 'line', showSymbol: false, lineStyle: { color: '#16a34a', width: 2.5 }, data: rows.map((r) => [r.target_t, r.served]) },
+          { name: 'Факт', type: 'line', showSymbol: true, symbolSize: 4, lineStyle: { color: '#0f172a', width: 1.5 }, itemStyle: { color: '#0f172a' }, data: rows.map((r) => [r.target_t, r.y]) },
+        ],
+      }
+    }
     const rows = f.timeline.filter((r) => r.mae_served != null)
     const end = rows[rows.length - 1]?.t
-    const vline = (t: number, color: string) => ({ xAxis: t, lineStyle: { color, type: 'solid', width: 1.5 }, label: { show: false } })
-    const marks = f.events.flatMap((e) => e.type === 'drift' ? [vline(e.t, '#ef4444')] : e.type === 'promotion' ? [vline(e.t, '#16a34a')] : [])
+    const marks = f.events.flatMap((e) => e.type === 'drift' ? [vline(e.t, '#ef4444')] : [])
     return {
       animation: false,
       grid: { left: 34, right: 8, top: 10, bottom: 22 },
@@ -144,72 +169,162 @@ function ForecastBlock() {
           markArea: { silent: true, itemStyle: { color: 'rgba(239,68,68,0.05)' }, data: [[{ xAxis: f.drift_at }, { xAxis: end }]] } },
         { name: 'Без обучения', type: 'line', showSymbol: false, lineStyle: { color: '#f59e0b', width: 1.5 }, data: rows.map((r) => [r.t, r.mae_frozen]) },
         { name: 'Простой', type: 'line', showSymbol: false, lineStyle: { color: '#94a3b8', width: 1.5, type: 'dashed' }, data: rows.map((r) => [r.t, r.mae_naive]) },
-        { name: 'TimesFM 3.0', type: 'line', showSymbol: false, lineStyle: { color: '#7c3aed', width: 1.5 }, data: rows.filter((r) => r.mae_tsfm != null).map((r) => [r.t, r.mae_tsfm]) },
       ],
     }
-  }, [f])
+  }, [f, view])
 
   if (!f || !option) return <Card className="p-6 text-sm text-slate-500">Считаю 5 дней работы линии…</Card>
   const m = f.multi_seed
   const last = f.timeline[f.timeline.length - 1]
-  const promotions = f.events.filter((e) => e.type === 'promotion').length
+  const iv = m.interval
+  const rank = Object.entries(m.mae_after_drift).filter(([k]) => k in MODEL_RU).sort((a, b) => a[1] - b[1])
+  const naive = m.mae_after_drift.naive
 
   return (
     <Card className="p-6">
       <Head n={2} title="Прогноз учится сам" sub="Прогноз на 2 часа → факт → ошибка → дообучение" badge="forecast" />
       <div className="mt-6 grid grid-cols-3 gap-4">
-        <Stat label="Ошибка с обучением" value={`−${Math.round(100 * m.gain_vs_frozen)}%`} sub={`чем без обучения · ${m.beats_frozen} из ${m.seeds} прогонов`} tone="good" />
-        <Stat label="Сейчас показываем" value={last.serving === 'model' ? `наша ${f.version}` : last.serving === 'tsfm' ? 'TimesFM 3.0' : 'простой'} sub="кто точнее на последних фактах" />
-        <Stat label="Модель обновилась" value={`${promotions} раз`} sub="сама, без программиста" />
+        <Stat label="Ошибка прогноза" value={`−${Math.round(100 * m.gain_vs_naive)}%`} sub={`чем у простого · ${num(m.mae_after_drift.served)} машины за 2 ч`} tone="good" />
+        <Stat label="Попадание в коридор" value={iv ? pct(iv.coverage) : '—'} sub={iv ? `обещаем ${pct(iv.target)} · проверено на фактах` : ''} />
+        <Stat label="Сейчас показываем" value={SERVING_RU[last.serving] ?? last.serving} sub="кто точнее на последних фактах" />
       </div>
-      <ReactECharts option={option} style={{ height: 200 }} notMerge className="mt-4" />
-      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-emerald-600" />что показываем</span>
-        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-amber-500" />без обучения</span>
-        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 border-t border-dashed border-slate-400" />простой «как 2 ч назад»</span>
-        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-violet-600" />TimesFM 3.0</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-0.5 bg-red-500" />линия изменилась</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-0.5 bg-emerald-600" />новая версия модели</span>
-      </div>
-      {f.tsfm && (
-        <div className="mt-5">
-          <div className="mb-2 text-sm font-semibold">Претенденты: готовые ИИ-модели от Google и Amazon</div>
-          <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
-            {[{ model: 'наша модель (самообучение)', mae_after_drift: f.tsfm.baselines.served, ours: true }, ...f.tsfm.models].map((m) => {
-              const name: Record<string, string> = { 'timesfm-3.0': 'TimesFM 3.0 · Google', 'timesfm-2.5': 'TimesFM 2.5 · Google', 'chronos-2': 'Chronos-2 · Amazon', 'chronos-2-small': 'Chronos-2 small · Amazon' }
-              const tm = m as { model: string; mae_after_drift?: number; ms_per_forecast?: number; admitted?: boolean; error?: string; ours?: boolean }
-              return (
-                <div key={tm.model} className="grid grid-cols-[minmax(0,1fr)_70px_70px_96px] items-center gap-3 px-3 py-2 text-sm">
-                  <span className={`truncate ${tm.ours ? 'font-semibold' : ''}`}>{name[tm.model] ?? tm.model}</span>
-                  <span className="text-right tabular-nums">{tm.mae_after_drift != null ? num(tm.mae_after_drift) : '—'}</span>
-                  <span className="text-right text-xs tabular-nums text-slate-400">{tm.ms_per_forecast != null ? `${tm.ms_per_forecast} мс` : ''}</span>
-                  <span className={`justify-self-end rounded-full px-2 py-0.5 text-[11px] font-medium ${tm.ours ? 'bg-slate-100 text-slate-600' : tm.error ? 'bg-slate-100 text-slate-400' : tm.admitted ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                    {tm.ours ? 'своя' : tm.error ? 'не запустилась' : tm.admitted ? 'в отборе' : 'не точнее'}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-          <div className="mt-1 text-[11px] text-slate-400">ошибка, машин за 2 ч после смены режима · среднее по {f.tsfm.seeds} прогонам · простой прогноз — {num(f.tsfm.baselines.naive)} · считалось на {f.tsfm.device === 'cuda' ? 'видеокарте' : 'процессоре'}</div>
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <div className="text-sm text-slate-600">{view === 'band' ? 'Прогноз, коридор и факт — последние полтора дня' : 'Ошибка со временем: обучение против без обучения'}</div>
+        <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs">
+          {(['band', 'error'] as const).map((v) => <button key={v} onClick={() => setView(v)} className={`rounded-md px-2.5 py-1 font-medium ${view === v ? 'bg-white shadow-sm' : 'text-slate-500'}`}>{v === 'band' ? 'Коридор' : 'Ошибка'}</button>)}
         </div>
-      )}
-      <More>
-        <p>Претенденты (TimesFM, Chronos) не дообучаются — они видят только свежую историю выпуска (zero-shot). Если претендент точнее на последних фактах, система может сделать его основным — по тому же правилу, что и свои версии.</p>
-        <p>Каждые 30 минут система записывает прогноз годных машин на 2 часа вперёд — до того, как они прошли. Когда приходит факт, считает ошибку и дообучается.</p>
-        <p>На 3-й день окраска скрыто деградирует (красная зона). Система замечает это сама и переключается на более точную версию модели.</p>
-        <p>Защита: прогноз модели показывается, только если на последних фактах она точнее простого прогноза. Пока модель учится — показываем простой.</p>
-        <p>Цифры — среднее по {m.seeds} разным прогонам симуляции: ошибка {num(m.mae_after_drift.served)} машины против {num(m.mae_after_drift.frozen)} без обучения и {num(m.mae_after_drift.naive)} у простого прогноза.</p>
-        <ul className="mt-1 space-y-0.5">
-          {f.events.filter((e) => e.type === 'drift' || e.type === 'promotion').map((e, i) => (
-            <li key={i}><span className={e.type === 'drift' ? 'text-red-500' : 'text-emerald-600'}>●</span> {dayLabel(e.t)} {clock(e.t % 960)} — {e.text}</li>
+      </div>
+      <ReactECharts option={option} style={{ height: 200 }} notMerge className="mt-2" />
+      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+        {view === 'band' ? <>
+          <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-emerald-600" />прогноз</span>
+          <span className="flex items-center gap-1.5"><span className="h-3 w-4 rounded-sm bg-emerald-600/15" />коридор: факт попадёт сюда в 9 из 10 случаев</span>
+          <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-slate-900" />факт</span>
+        </> : <>
+          <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-emerald-600" />что показываем</span>
+          <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-amber-500" />без обучения</span>
+          <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 border-t border-dashed border-slate-400" />простой</span>
+          <span className="flex items-center gap-1.5"><span className="h-3 w-0.5 bg-red-500" />линия изменилась</span>
+        </>}
+      </div>
+
+      <div className="mt-5">
+        <div className="mb-2 text-sm font-semibold">Какая модель точнее</div>
+        <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
+          {rank.map(([k, v], i) => (
+            <div key={k} className="grid grid-cols-[minmax(0,1fr)_56px_64px] items-center gap-3 px-3 py-2 text-sm">
+              <span className={`truncate ${i === 0 ? 'font-semibold' : ''}`}>{MODEL_RU[k]}</span>
+              <span className="text-right tabular-nums">{num(v)}</span>
+              <span className={`text-right text-xs tabular-nums ${v < naive ? 'text-emerald-600' : 'text-slate-400'}`}>{k === 'naive' ? 'база' : `${v < naive ? '−' : '+'}${Math.abs(Math.round(100 * (1 - v / naive)))}%`}</span>
+            </div>
           ))}
-        </ul>
+        </div>
+        <div className="mt-1 text-[11px] text-slate-400">ошибка, машин за 2 ч после смены режима · среднее по {m.seeds} прогонам · % — против простого прогноза</div>
+      </div>
+      <More>
+        <p>Каждые 30 минут система записывает прогноз годных машин на 2 часа вперёд — до того, как они прошли. Когда приходит факт, считает ошибку и дообучается.</p>
+        <p>Показывается прогноз той модели, которая точнее на последних фактах; переключение — только при заметном перевесе (20%), потому что внезапные поломки делают ошибки «рваными».</p>
+        <p>Коридор строится по недавним ошибкам показанного прогноза и сам подстраивается, чтобы факт попадал в него в 90% случаев (адаптивный конформный прогноз). Он несимметричный: внезапная поломка может сильно уронить выпуск, а резко выше прогноза линия не сделает.</p>
+        <p>Ансамбль (среднее моделей с весами по точности) проверен честно: здесь он не точнее LightGBM, потому что LightGBM заметно сильнее остальных. Остаётся претендентом.</p>
+        <p>TimesFM и Chronos не дообучаются — видят только свежую историю (zero-shot). На 3-й день окраска скрыто деградирует — система это замечает.</p>
       </More>
     </Card>
   )
 }
 
-/* ───────────── 3. Брак окраски: ввод человека ───────────── */
+/* ───────────── 3. Дообучение на большом наборе ───────────── */
+function RetrainBlock() {
+  const [g, setG] = useState<GlobalState | null>(null)
+  useEffect(() => { api.retrainStatus().then(setG).catch(() => {}) }, [])
+  useEffect(() => {
+    if (!g?.running) return
+    const id = setInterval(() => api.retrainStatus().then(setG).catch(() => {}), 1000)
+    return () => clearInterval(id)
+  }, [g?.running])
+  if (!g) return null
+  const cur = g.versions.find((v) => v.version === g.current)
+  return (
+    <Card className="p-6">
+      <Head n={3} title="Дообучение на большом наборе" sub="Сотни смоделированных дней завода → новая версия → проверка → замена" badge="forecast" />
+      <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_240px]">
+        <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
+          <div className="grid grid-cols-[48px_minmax(0,1fr)_64px_minmax(0,1.4fr)] gap-3 px-3 py-2 text-xs text-slate-400">
+            <span>версия</span><span>обучена на</span><span className="text-right">ошибка</span><span>решение</span>
+          </div>
+          {[...g.versions].reverse().map((v) => (
+            <div key={v.version} className={`grid grid-cols-[48px_minmax(0,1fr)_64px_minmax(0,1.4fr)] items-center gap-3 px-3 py-2 text-sm ${v.version === g.current ? 'bg-emerald-50/50' : ''}`}>
+              <span className="font-semibold">v{v.version}</span>
+              <span className="truncate text-slate-600">{v.days.toLocaleString('ru-RU')} дней · {v.rows.toLocaleString('ru-RU')} примеров</span>
+              <span className="text-right tabular-nums">{num(v.holdout_mae, 2)}</span>
+              <span className={`truncate text-xs ${v.version === g.current ? 'font-semibold text-emerald-700' : v.promoted ? 'text-slate-500' : 'text-amber-700'}`} title={v.verdict}>
+                {v.version === g.current ? 'основная · ' : ''}{v.verdict}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-col justify-between rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
+          <div>
+            <div className="text-xs text-slate-500">Основная версия</div>
+            <div className="text-3xl font-semibold">{cur ? `v${cur.version}` : '—'}</div>
+            {cur && <div className="text-xs text-slate-500">ошибка {num(cur.holdout_mae, 2)} против {num(cur.holdout_mae_naive, 2)} у простого</div>}
+          </div>
+          {g.running ? (
+            <div className="mt-4">
+              <div className="h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${Math.round(100 * g.progress)}%` }} /></div>
+              <div className="mt-1 text-xs text-slate-500">{g.stage}… {Math.round(100 * g.progress)}%</div>
+            </div>
+          ) : (
+            <button onClick={() => api.retrain(400).then(setG)} className="mt-4 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700">Дообучить на 1 200 днях</button>
+          )}
+          {g.last_error && <div className="mt-1 text-xs text-red-600">{g.last_error}</div>}
+        </div>
+      </div>
+      <More>
+        <p>Каждая версия учится на смоделированных днях со случайными поломками, деградациями, нехватками деталей и разной надёжностью участков — чтобы узнавать знакомые ситуации сразу, без недель наблюдения.</p>
+        <p>Проверка — на 10 отдельных потоках, которых модель не видела. Новая версия становится основной, только если точнее текущей хотя бы на 3%. Иначе остаётся претендентом — так система не «портит» себя неудачным обучением.</p>
+        <p>На заводе к смоделированным дням добавится реальная история из MES — механизм тот же.</p>
+      </More>
+    </Card>
+  )
+}
+
+/* ───────────── 4. Двойник подгоняется под журналы завода ───────────── */
+const AREA_RU: Record<string, string> = { welding: 'Сварка', paint: 'Окраска', assembly: 'Сборка' }
+function TwinFitBlock() {
+  const [r, setR] = useState<TwinFit | null>(null)
+  useEffect(() => { api.twinFit().then(setR).catch(() => {}) }, [])
+  if (!r) return <Card className="p-6 text-sm text-slate-500">Сверяю двойник с журналом простоев…</Card>
+  return (
+    <Card className="p-6">
+      <Head n={5} title="Двойник подгоняется под завод" sub="Журнал простоев → надёжность участков → двойник совпадает с фактом" badge="forecast" />
+      <div className="mt-5 divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
+        <div className="grid grid-cols-[minmax(0,1fr)_70px_80px_90px] gap-3 px-3 py-2 text-xs text-slate-400">
+          <span>внеплановые простои, мин в сутки</span><span className="text-right">факт</span><span className="text-right">двойник</span><span className="text-right">после подгонки</span>
+        </div>
+        {r.areas.map((a) => (
+          <div key={a.area} className="grid grid-cols-[minmax(0,1fr)_70px_80px_90px] items-center gap-3 px-3 py-2 text-sm">
+            <span>{AREA_RU[a.area]} <span className="text-xs text-slate-400">· {a.records} записей</span></span>
+            <span className="text-right font-medium tabular-nums">{num(a.fact_down)}</span>
+            <span className="text-right tabular-nums text-slate-500">{num(a.twin_before)}</span>
+            <span className="text-right tabular-nums text-emerald-700">{num(a.twin_after)}</span>
+          </div>
+        ))}
+      </div>
+      <div className={`mt-3 rounded-xl px-3 py-2 text-sm ${r.enough_data ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
+        {r.is_test
+          ? <>Тестовые данные ТЗ: {r.note} Подгонка не применяется — включится сама, когда загрузите реальные журналы во вкладке «Факты».</>
+          : <>Двойник подогнан под «{r.dataset}». {r.note}</>}
+      </div>
+      <More>
+        <p>Для каждого участка берём внеплановые остановки из журнала: средняя длительность = время ремонта (MTTR), частота = время работы между отказами (MTBF). Затем уточняем по самой симуляции, пока простои двойника не совпадут с фактом.</p>
+        <p>Метод проверен на синтетическом «заводе» со скрытыми параметрами: по 21 дню журнала двойник восстановил время ремонта окраски 54,5 мин при скрытых 55, простои совпали с фактом.</p>
+        {r.changes.length > 0 && <ul className="space-y-0.5">{r.changes.map((c) => <li key={c.area}>{AREA_RU[c.area]}: между отказами {Math.round(c.mtbf_before)} → {c.mtbf_after} мин работы, ремонт {c.mttr_before} → {c.mttr_after} мин</li>)}</ul>}
+      </More>
+    </Card>
+  )
+}
+
+/* ───────────── 4. Брак окраски: ввод человека ───────────── */
 function CalibBlock() {
   const [st, setSt] = useState<CalibState | null>(null)
   const [produced, setProduced] = useState(118)
@@ -229,7 +344,7 @@ function CalibBlock() {
 
   return (
     <Card className="p-6">
-      <Head n={3} title="Уточните брак окраски" sub="Введите брак за смену — двойник пересчитается" badge="feedback" />
+      <Head n={4} title="Уточните брак окраски" sub="Введите брак за смену — двойник пересчитается" badge="feedback" />
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_260px]">
         <div className="min-w-0">
           <div className="grid grid-cols-3 gap-4">
@@ -289,7 +404,9 @@ export default function LearningPage() {
     <div className="space-y-6">
       <JuryBlock />
       <ForecastBlock />
+      <RetrainBlock />
       <CalibBlock />
+      <TwinFitBlock />
     </div>
   )
 }
