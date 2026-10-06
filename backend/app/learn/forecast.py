@@ -74,6 +74,7 @@ def _tsfm_predictions(seed: int, model: str = TSFM_MODEL) -> dict[int, float]:
 SERVE_NAMES = {"model": "онлайн-модель", "naive": "простой прогноз", "tsfm": "TimesFM 3.0", "lgbm": "LightGBM", "ens": "ансамбль"}
 ENS_MEMBERS = ("champion", "lgbm", "tsfm", "chronos")
 COVER = 0.90          # целевое покрытие интервала
+DIP_LEVEL = 0.8       # провал — меньше 80% нормы за 2 часа
 ACI_GAMMA = 0.02      # шаг адаптивного конформного интервала
 
 
@@ -121,6 +122,11 @@ def run_learning(seed: int = 11, n_max: int | None = None, use_tsfm: bool = True
             preds["chronos"] = clip(chronos[s.t])
         if use_global:
             preds["lgbm"] = clip(s.x["last_h"] + global_model.predict(s.x))
+        # риск провала (<80% нормы за 2 ч) — несколько моделей вместе: классификатор LightGBM
+        # и «голоса» прогнозных моделей (LightGBM, TimesFM, Chronos): сколько из них видят провал
+        dip_p = global_model.predict_dip(s.x) if use_global else None
+        votes = [preds[k] < DIP_LEVEL * PLAN for k in ("lgbm", "tsfm", "chronos") if preds.get(k) is not None]
+        dip_risk = (0.6 * dip_p + 0.4 * (sum(votes) / len(votes))) if dip_p is not None and votes else dip_p
         ens = _ensemble(preds, errs)
         if ens is not None:
             preds["ens"] = clip(ens)
@@ -140,7 +146,9 @@ def run_learning(seed: int = 11, n_max: int | None = None, use_tsfm: bool = True
                        "y_hat": round(preds["served"], 2), "model_version": champ_name if serving == "model" else SERVE_NAMES.get(serving, serving)})
         pending.append((i, s, preds))
         row = {"t": s.t, "target_t": s.t + HORIZON, **{k: (round(v, 2) if v is not None else None) for k, v in preds.items()}, "y": s.y,
-               "lo": round(band[0], 2) if band else None, "hi": round(band[1], 2) if band else None}
+               "lo": round(band[0], 2) if band else None, "hi": round(band[1], 2) if band else None,
+               "dip_risk": round(dip_risk, 3) if dip_risk is not None else None, "dip_model": round(dip_p, 3) if dip_p is not None else None,
+               "dip": (s.y < DIP_LEVEL * PLAN) if s.y is not None else None}
         pending[-1][2]["_band"] = band
         # 2) пришёл факт по прогнозу, выпущенному DELAY интервалов назад
         while pending and pending[0][1].t + HORIZON <= s.t:
@@ -207,6 +215,15 @@ def run_learning(seed: int = 11, n_max: int | None = None, use_tsfm: bool = True
         return float(np.mean(vals)) if vals else None
 
     summary = {k: {"mae_all": mae(k), "mae_after_drift": mae(k, DRIFT_AT)} for k in ("champion", "served", "frozen", "naive", "plan", "tsfm", "chronos", "lgbm", "ens") if any(r.get(k) is not None for r in timeline)}
+    dips = [r for r in timeline[WARMUP:] if r.get("dip_risk") is not None]
+    if dips:
+        from .global_model import _auc
+        yv = np.array([int(r["dip"]) for r in dips])
+        pr = np.array([r["dip_risk"] for r in dips]); pm = np.array([r["dip_model"] for r in dips])
+        warn = pr >= 0.5
+        summary["dip"] = {"level": DIP_LEVEL, "auc": _auc(pr, yv), "auc_model_only": _auc(pm, yv), "base_rate": float(yv.mean()),
+                          "precision": float(yv[warn].mean()) if warn.any() else None, "recall": float(warn[yv == 1].mean()) if yv.any() else None,
+                          "n": int(len(yv))}
     after = [c for c in cover_hits if c[0] >= DRIFT_AT]
     summary["interval"] = {"target": COVER, "coverage": float(np.mean([c[1] for c in cover_hits])) if cover_hits else None,
                            "coverage_after_drift": float(np.mean([c[1] for c in after])) if after else None,

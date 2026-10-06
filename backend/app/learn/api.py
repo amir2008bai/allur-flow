@@ -58,6 +58,11 @@ def forecast_payload() -> dict:
                      "coverage_after_drift": float(np.mean([r["interval"]["coverage_after_drift"] for r in runs])),
                      "width": float(np.mean([r["interval"]["width"] for r in runs]))},
     }
+    if all("dip" in r for r in runs):
+        d = [r["dip"] for r in runs]
+        mean = lambda k: float(np.nanmean([x[k] for x in d if x[k] is not None]))  # noqa: E731
+        show["multi_seed"]["dip"] = {"level": d[0]["level"], "auc": mean("auc"), "auc_model_only": mean("auc_model_only"),
+                                     "base_rate": mean("base_rate"), "precision": mean("precision"), "recall": mean("recall")}
     return show
 
 

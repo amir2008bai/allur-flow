@@ -151,6 +151,8 @@ function ForecastBlock() {
           { name: 'Коридор 90%', type: 'line', stack: 'band', showSymbol: false, lineStyle: { opacity: 0 }, areaStyle: { color: 'rgba(22,163,74,0.12)' }, data: rows.map((r) => [r.target_t, (r.hi ?? 0) - (r.lo ?? 0)]), tooltip: { show: false } },
           { name: 'Прогноз', type: 'line', showSymbol: false, lineStyle: { color: '#16a34a', width: 2.5 }, data: rows.map((r) => [r.target_t, r.served]) },
           { name: 'Факт', type: 'line', showSymbol: true, symbolSize: 4, lineStyle: { color: '#0f172a', width: 1.5 }, itemStyle: { color: '#0f172a' }, data: rows.map((r) => [r.target_t, r.y]) },
+          { name: 'Риск провала', type: 'scatter', symbol: 'triangle', symbolSize: 9, itemStyle: { color: '#ef4444' }, data: rows.filter((r) => (r.dip_risk ?? 0) >= 0.5).map((r) => [r.target_t, 2]),
+            tooltip: { valueFormatter: () => 'система заранее предупредила о провале' } },
         ],
       }
     }
@@ -200,6 +202,7 @@ function ForecastBlock() {
           <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-emerald-600" />прогноз</span>
           <span className="flex items-center gap-1.5"><span className="h-3 w-4 rounded-sm bg-emerald-600/15" />коридор: факт попадёт сюда в 9 из 10 случаев</span>
           <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-slate-900" />факт</span>
+          <span className="flex items-center gap-1.5"><span className="text-red-500">▲</span>предупреждение о провале</span>
         </> : <>
           <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-emerald-600" />что показываем</span>
           <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-amber-500" />без обучения</span>
@@ -208,6 +211,15 @@ function ForecastBlock() {
         </>}
       </div>
 
+      {m.dip && (
+        <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl bg-red-50/60 px-4 py-3 ring-1 ring-red-100">
+          <div className="text-sm font-semibold text-slate-800">Провалы выпуска — за 2 часа</div>
+          <div className="text-sm text-slate-600">из предупреждений сбылось <b className="text-slate-900">{pct(m.dip.precision)}</b></div>
+          <div className="text-sm text-slate-600">поймано провалов <b className="text-slate-900">{pct(m.dip.recall)}</b></div>
+          <div className="text-sm text-slate-600">различает провал и норму <b className="text-slate-900">{pct(m.dip.auc)}</b></div>
+          <div className="w-full text-[11px] text-slate-400">Провал — меньше {Math.round(100 * m.dip.level)}% нормы за следующие 2 часа (бывает в {pct(m.dip.base_rate)} интервалов). Решают вместе: модель провалов LightGBM и «голоса» LightGBM, TimesFM и Chronos.</div>
+        </div>
+      )}
       <div className="mt-5">
         <div className="mb-2 text-sm font-semibold">Какая модель точнее</div>
         <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">

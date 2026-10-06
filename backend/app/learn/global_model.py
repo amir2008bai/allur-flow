@@ -34,6 +34,9 @@ PROMOTE_MARGIN = 0.03
 PARAMS = {"objective": "l1", "learning_rate": 0.05, "num_leaves": 31, "min_data_in_leaf": 40,
           "feature_fraction": 0.9, "bagging_fraction": 0.8, "bagging_freq": 1, "lambda_l2": 1.0, "verbose": -1, "seed": 7}
 ROUNDS = 400
+PLAN_2H = 120 / 480 * HORIZON          # норма выпуска за 2 часа
+DIP_LEVEL = 0.8                        # «провал» — меньше 80% нормы за следующие 2 часа
+DIP_PARAMS = {**PARAMS, "objective": "binary", "is_unbalance": False}
 
 _lock = threading.Lock()
 _status = {"running": False, "progress": 0.0, "stage": "", "last_error": None}
@@ -68,15 +71,39 @@ def xy(snaps) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return X, y - last_h, last_h
 
 
-def build_dataset(n_runs: int, seed0: int = TRAIN_SEED0, progress=None):
-    Xs, ys = [], []
+def build_dataset(n_runs: int, seed0: int = TRAIN_SEED0, progress=None, with_y: bool = False):
+    Xs, ys, yy = [], [], []
     for i in range(n_runs):
         run = simulate(random_day(seed0 + i), seed0 + i)
-        X, r, _ = xy(interval_snapshots(run))
-        Xs.append(X); ys.append(r)
+        X, r, last_h = xy(interval_snapshots(run))
+        Xs.append(X); ys.append(r); yy.append(r + last_h)
         if progress:
             progress((i + 1) / n_runs)
+    if with_y:
+        return np.vstack(Xs), np.concatenate(ys), np.concatenate(yy)
     return np.vstack(Xs), np.concatenate(ys)
+
+
+def _auc(p: np.ndarray, y: np.ndarray) -> float:
+    """Площадь под ROC: вероятность, что у настоящего провала риск выше, чем у обычного интервала."""
+    pos, neg = p[y == 1], p[y == 0]
+    if not len(pos) or not len(neg):
+        return float("nan")
+    order = np.argsort(np.concatenate([pos, neg]))
+    ranks = np.empty(len(order)); ranks[order] = np.arange(1, len(order) + 1)
+    return float((ranks[: len(pos)].sum() - len(pos) * (len(pos) + 1) / 2) / (len(pos) * len(neg)))
+
+
+def holdout_dip(booster) -> dict:
+    ps, ys = [], []
+    for s in HOLDOUT:
+        snaps = interval_snapshots(emulate(s))
+        X, r, last_h = xy(snaps)
+        ps.append(booster.predict(X)); ys.append(((r + last_h) < DIP_LEVEL * PLAN_2H).astype(int))
+    p, y = np.concatenate(ps), np.concatenate(ys)
+    warn = p >= 0.5
+    return {"auc": _auc(p, y), "brier": float(np.mean((p - y) ** 2)), "base_rate": float(y.mean()),
+            "precision": float(y[warn].mean()) if warn.any() else None, "recall": float(warn[y == 1].mean()) if y.any() else None}
 
 
 def holdout_mae(booster) -> dict:
@@ -107,29 +134,34 @@ def train(n_runs: int = 200, progress=None) -> dict:
     t0 = time.time()
     ver = len(registry()["versions"]) + 1
     seed0 = TRAIN_SEED0 + 100_000 * ver      # каждая версия видит НОВЫЕ дни завода
-    X, y = build_dataset(n_runs, seed0=seed0, progress=lambda p: progress and progress(0.85 * p, "генерирую смены"))
+    X, y, yy = build_dataset(n_runs, seed0=seed0, progress=lambda p: progress and progress(0.8 * p, "генерирую смены"), with_y=True)
     if progress:
-        progress(0.88, "обучаю LightGBM")
+        progress(0.84, "обучаю LightGBM")
     booster = lgb.train(PARAMS, lgb.Dataset(X, y, feature_name=FEATURES), num_boost_round=ROUNDS)
+    if progress:
+        progress(0.9, "обучаю модель провалов")
+    dip = lgb.train(DIP_PARAMS, lgb.Dataset(X, (yy < DIP_LEVEL * PLAN_2H).astype(int), feature_name=FEATURES), num_boost_round=300)
     if progress:
         progress(0.95, "проверяю на отложенных потоках")
     score = holdout_mae(booster)
+    dip_score = holdout_dip(dip)
     reg = registry()
     path = DIR / f"lgbm_v{ver}.txt"
     DIR.mkdir(parents=True, exist_ok=True)
     booster.save_model(str(path))
+    dip.save_model(str(DIR / f"lgbm_dip_v{ver}.txt"))
     cur = next((v for v in reg["versions"] if v["version"] == reg["current"]), None)
     promoted = cur is None or score["mae"] < (1 - PROMOTE_MARGIN) * cur["holdout_mae"]
     entry = {"version": ver, "file": path.name, "trained_at": time.time(), "runs": n_runs, "rows": int(len(y)),
              "days": round(n_runs * 3, 0), "seed0": seed0, "holdout_mae": score["mae"], "holdout_mae_naive": score["mae_naive"],
-             "seconds": round(time.time() - t0, 1), "promoted": promoted,
+             "seconds": round(time.time() - t0, 1), "promoted": promoted, "dip": dip_score, "dip_file": f"lgbm_dip_v{ver}.txt",
              "verdict": ("стала основной" if cur is None else f"точнее v{cur['version']} → стала основной") if promoted
              else f"не точнее v{cur['version']} на 3% → осталась претендентом"}
     reg["versions"].append(entry)
     if promoted:
         reg["current"] = ver
     _save_registry(reg)
-    current_booster.cache_clear()
+    current_booster.cache_clear(); dip_booster.cache_clear()
     return entry
 
 
@@ -141,6 +173,24 @@ def current_booster():
     import lightgbm as lgb
     v = next(v for v in reg["versions"] if v["version"] == reg["current"])
     return lgb.Booster(model_file=str(DIR / v["file"]))
+
+
+@lru_cache(maxsize=1)
+def dip_booster():
+    reg = registry()
+    v = next((v for v in reg["versions"] if v["version"] == reg["current"]), None)
+    if not v or not v.get("dip_file") or not (DIR / v["dip_file"]).exists():
+        return None
+    import lightgbm as lgb
+    return lgb.Booster(model_file=str(DIR / v["dip_file"]))
+
+
+def predict_dip(x: dict) -> float | None:
+    """Риск провала: вероятность, что за следующие 2 часа выйдет меньше 80% нормы."""
+    b = dip_booster()
+    if b is None:
+        return None
+    return float(b.predict(np.array([[x[f] for f in FEATURES]], dtype=float))[0])
 
 
 def predict(x: dict) -> float | None:
