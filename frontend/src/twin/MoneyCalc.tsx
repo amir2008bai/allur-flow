@@ -8,6 +8,7 @@ import { useView } from './store'
 const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString('ru-RU')
 const int = (x: number) => Math.round(x).toLocaleString('ru-RU')
 const NONE: Money = { month: 0, once: 0 }
+const cars = (x: number) => { const n = Math.round(x), d = n % 10, h = n % 100; return `${n.toLocaleString('ru-RU')} ${d === 1 && h !== 11 ? 'машина' : d >= 2 && d <= 4 && (h < 12 || h > 14) ? 'машины' : 'машин'}` }
 
 function Num({ label, value, onChange, unit, w = 'w-28' }: { label: string; value: number; onChange: (v: number) => void; unit?: string; w?: string }) {
   return (
@@ -54,7 +55,7 @@ export default function MoneyCalc({ whatif }: { whatif: WhatIf | null }) {
             <h2 className="text-lg font-semibold leading-tight">Эффект в деньгах</h2>
             <p className="text-sm text-slate-500">
               {e.mode === 'plan'
-                ? <>До плана не хватает <b className="text-red-600">{int(gapCars)} машин в месяц</b> — это {tenge(gapCars * cfg.margin)} маржи</>
+                ? <>Сейчас до плана не хватает <b className="text-red-600">{cars(gapCars)} в месяц</b> — теряем {tenge(gapCars * cfg.margin)} маржи</>
                 : <>План выполняется — считаем машины сверх плана</>}
             </p>
           </div>
@@ -64,7 +65,7 @@ export default function MoneyCalc({ whatif }: { whatif: WhatIf | null }) {
 
       {/* для какого действия */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <span className="text-sm text-slate-500">Посчитать для:</span>
+        <span className="text-sm text-slate-500">Что сделать <span className="text-xs text-slate-400">(+ машин за смену)</span>:</span>
         {choices.map((c) => {
           const on = cur.id === c.id
           return (
@@ -81,15 +82,18 @@ export default function MoneyCalc({ whatif }: { whatif: WhatIf | null }) {
       {/* результат */}
       <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-white p-4 ring-1 ring-emerald-200">
-          <div className="text-xs font-medium text-emerald-700">{e.mode === 'plan' ? 'Вернём в месяц' : 'Сверх плана в месяц'}</div>
-          <div className={`text-4xl font-semibold tracking-tight tabular-nums ${e.netMonth >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{e.netMonth >= 0 ? '+' : ''}{tenge(e.netMonth)}</div>
-          <div className="mt-0.5 text-xs text-slate-500">
-            {e.mode === 'plan'
-              ? (e.closesGap ? 'план выполнен' : `закроет ${int(e.cars)} из ${int(gapCars)} машин недобора`)
-              : `+${int(e.cars)} машин, если на них будет спрос`}
-            {cost.month > 0 && ` · за вычетом ${tenge(cost.month)} затрат`}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs font-medium text-emerald-700">{e.mode === 'plan' ? 'Дополнительно заработаем в месяц' : 'Сверх плана заработаем в месяц'}</div>
+            {e.mode === 'plan' && (e.closesGap
+              ? <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white">закрывает весь недобор</span>
+              : <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">закрывает {int(e.cars)} из {int(gapCars)}</span>)}
           </div>
-          {e.aboveMonth > 0 && <div className="mt-1.5 text-xs text-slate-400">ещё +{tenge(e.aboveMonth)} сверх плана — если будет спрос</div>}
+          <div className={`text-4xl font-semibold tracking-tight tabular-nums ${e.netMonth >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{e.netMonth >= 0 ? '+' : ''}{tenge(e.netMonth)}</div>
+          <div className="mt-1 text-sm tabular-nums text-slate-600">
+            +{cars(e.cars)}{e.mode === 'plan' ? ' до плана' : ''} × {tenge(cfg.margin)}{cost.month > 0 && <> − {tenge(cost.month)} затрат</>}
+          </div>
+          {e.mode === 'extra' && <div className="mt-1 text-xs text-slate-400">если на эти машины будет спрос</div>}
+          {e.aboveMonth > 0 && <div className="mt-1.5 text-xs text-slate-400">ещё +{cars(e.aboveMonth / cfg.margin)} сверх плана (+{tenge(e.aboveMonth)}) — если будет спрос</div>}
         </div>
         <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
           <div className="text-xs text-slate-500">За год</div>
