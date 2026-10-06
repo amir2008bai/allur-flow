@@ -15,6 +15,10 @@ interface ViewState {
   setView: (v: '3d' | 'plan' | 'flow') => void
   touring: boolean
   setTouring: (t: boolean) => void
+  scenario: string
+  setScenario: (s: string) => void
+  tab: string
+  setTab: (t: string) => void
 }
 
 export const useView = create<ViewState>((set) => ({
@@ -24,6 +28,10 @@ export const useView = create<ViewState>((set) => ({
   speed: 20,
   view: '3d',
   touring: false,
+  scenario: 'paint_degradation',
+  setScenario: (scenario) => set({ scenario }),
+  tab: 'facts',
+  setTab: (tab) => set({ tab }),
   setTouring: (touring) => set({ touring }),
   select: (selected) => set({ selected }),
   setT: (t) => set({ t }),

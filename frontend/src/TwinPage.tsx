@@ -53,7 +53,8 @@ function TourButton() {
 
 export default function TwinPage() {
   const [meta, setMeta] = useState<SimMeta | null>(null)
-  const [scenario, setScenario] = useState('paint_degradation')
+  const scenario = useView((v) => v.scenario)
+  const setScenario = useView((v) => v.setScenario)
   const [run, setRun] = useState<SimRun | null>(null)
   const [whatif, setWhatif] = useState<WhatIf | null>(null)
   const [mode, setMode] = useState<Mode>('live')

@@ -19,7 +19,7 @@
   FastAPI, Pydantic 2, SimPy 4.1.2, numpy, scipy, River 0.26.1. Позже: TimescaleDB, EMQX, Node-RED (Docker), TimesFM 3.0, Chronos-2, TSPulse, LightGBM, MLflow, Prefect, Evidently.
 - Frontend: Vite + React **19.3.0 (точно, без ^)** + TypeScript, three **0.186.1**, @react-three/fiber **9.8.1**, drei 10.7.x, @react-three/postprocessing 3.1.x, @xyflow/react 12, ECharts 6, Zustand 5, Motion. PWA.
   R3F 9.8.1 требует react <19.4, postprocessing требует three <0.187. Используй `npm install --save-exact`. Не запускай `npm update`.
-- LLM-копилот: OpenRouter, ключ в `.env` (ключ НИКОГДА не печатать и не коммитить). Модель `qwen/qwen3.8-27b:free`, запасные — Nemotron (см. `.env`). Читай `.env` в UTF-8; в Git Bash кириллицу в curl не отправлять — использовать Python.
+- LLM-копилот: OpenRouter, ключ в `.env` (ключ НИКОГДА не печатать и не коммитить). Модель `nvidia/nemotron-3.5-lightning:free` (быстрая), запасные — Qwen3.8 и Nemotron Super (см. `.env`). Читай `.env` в UTF-8; в Git Bash кириллицу в curl не отправлять — использовать Python.
 
 ## Правила честности данных (обязательно)
 1. У каждого числа есть метка источника: `fact` (из DOCX) / `calc` (расчёт по фактам) / `assumption` (допущение) / `sim` (симуляция) / `forecast` (прогноз) / `feedback` (ответ человека).

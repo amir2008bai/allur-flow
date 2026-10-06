@@ -3,6 +3,8 @@ import FactsPage from './FactsPage'
 import TwinPage from './TwinPage'
 import LearningPage from './learn/LearningPage'
 import VotePage from './learn/VotePage'
+import Copilot from './Copilot'
+import { useView } from './twin/store'
 import type { Facts, Finding } from './types'
 
 const TABS = [
@@ -20,7 +22,8 @@ export default function App() {
 function MainApp() {
   const [data, setData] = useState<{ facts: Facts; findings: Finding[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState('facts')
+  const tab = useView((v) => v.tab)
+  const setTab = useView((v) => v.setTab)
 
   useEffect(() => {
     Promise.all([fetch('/api/facts').then((r) => r.json()), fetch('/api/findings').then((r) => r.json())])
@@ -56,6 +59,7 @@ function MainApp() {
         {tab === 'facts' && !data && !error && <div className="text-sm text-slate-500">Загрузка данных…</div>}
         {tab === 'facts' && data && <FactsPage facts={data.facts} findings={data.findings} />}
       </main>
+      <Copilot />
     </div>
   )
 }
