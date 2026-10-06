@@ -108,9 +108,27 @@ def simulate(params: LineParams, seed: int = 0, horizon: float | None = None, fr
         events.append({"t": round(env.now, 2), "type": "stop_end", "station": s})
         set_state(s, "working")
 
+    in_work = {st: False for st in STATIONS}
+    idle_down = {st: None for st in STATIONS}
+
+    def outage_watch(s: str, fd):
+        """Остановка (например, нет питания) касается и участка, который сейчас ждёт или заблокирован."""
+        yield env.timeout(fd.start)
+        if not in_work[s] and cur[s][1] in ("starved", "blocked"):
+            idle_down[s] = cur[s][1]
+            set_state(s, "down")
+            events.append({"t": round(env.now, 2), "type": "stop_start", "station": s, "minutes": round(fd.minutes, 1),
+                           "planned": fd.planned, "reason": fd.reason})
+        yield env.timeout(fd.minutes)
+        if idle_down[s] is not None and not in_work[s] and cur[s][1] == "down":
+            set_state(s, idle_down[s])
+        idle_down[s] = None
+
     def work(s: str, minutes: float):
         """Работать `minutes` чистого времени, прерываясь на отказы и принудительные остановки."""
         sp = params.stations[s]
+        in_work[s] = True
+        idle_down[s] = None
         remaining = minutes
         while remaining > 1e-9:
             # принудительная остановка, которая уже началась
@@ -127,6 +145,7 @@ def simulate(params: LineParams, seed: int = 0, horizon: float | None = None, fr
             if ttf[s] <= 1e-9:
                 yield from go_down(s, _lognormal(rng[(s, "ttr")], sp.mttr, sp.mttr_cv), "Отказ оборудования", False)
                 ttf[s] = rng[(s, "ttf")].exponential(sp.mtbf_work)
+        in_work[s] = False
 
     def station(i: int, s: str):
         sp = params.stations[s]
@@ -134,6 +153,11 @@ def simulate(params: LineParams, seed: int = 0, horizon: float | None = None, fr
         down = buffers[BUFFERS[i]] if i < len(BUFFERS) else None
         while True:
             set_state(s, "starved")
+            if up is None:
+                for a, m in params.shortages:  # нехватка комплектующих: первому участку нечего брать
+                    if a <= env.now < a + m:
+                        events.append({"t": round(env.now, 2), "type": "shortage", "station": s, "minutes": round(a + m - env.now, 1)})
+                        yield env.timeout(a + m - env.now)
             body = (yield up.get()) if up else new_body()
             set_state(s, "working")
             while True:
@@ -194,6 +218,8 @@ def simulate(params: LineParams, seed: int = 0, horizon: float | None = None, fr
 
     for i, s in enumerate(STATIONS):
         env.process(station(i, s))
+        for fd in list(forced[s]):
+            env.process(outage_watch(s, fd))
     for k in range(params.repair_servers):
         env.process(repair_worker(k))
     env.process(monitor())

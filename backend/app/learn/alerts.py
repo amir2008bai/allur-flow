@@ -25,6 +25,8 @@ TYPES = {
     "buffer_low": "Буфер перед сборкой почти пуст",
     "stop_long": "Затянувшаяся остановка",
     "defect_burst": "Всплеск брака окраски",
+    "shortage": "Склад не выдаёт комплектующие",
+    "micro_stops": "Частые короткие остановки",
 }
 STATION_RU = {"welding": "сварка", "paint": "окраска", "assembly": "сборка", "qc": "ОТК"}
 
@@ -41,14 +43,19 @@ class Alert:
 
 
 def _detect(seed: int) -> list[Alert]:
-    run = emulate(seed)
+    return detect_run(emulate(seed), seed)
+
+
+def detect_run(run, tag: int | str = 0) -> list[Alert]:
+    """Правила тревог на любом прогоне (эмулятор, сценарий сбоя, реальные данные)."""
+    seed = tag
     fr = run.frames
     good = np.array([f["good"] for f in fr] + [run.good_out])
     d_t = np.array([e["t"] for e in run.events if e["type"] == "defect" and e["station"] == "paint"])
     stops = [e for e in run.events if e["type"] == "stop_start"]
     last = {k: -999 for k in TYPES}
     out: list[Alert] = []
-    H = int(EMULATOR.horizon)
+    H = int(run.horizon)
     for c in range(60, H - 31, 5):
         b_now, b_prev = fr[c]["buffers"]["b_paint_asm"], fr[c - 30]["buffers"]["b_paint_asm"]
         pw = _state_minutes(run, "paint", c - 30, c, "working") / 30
@@ -64,6 +71,16 @@ def _detect(seed: int) -> list[Alert]:
             s = down_now[0]
             cand.append(("stop_long", f"{STATION_RU[s['station']].capitalize()} стоит уже {int(c - s['t'])} мин"))
             stop_station = s["station"]
+        if _state_minutes(run, "welding", c - 10, c, "starved") >= 9:
+            cand.append(("shortage", "Сварка 10 мин ждёт кузов со склада — нет комплектующих?"))
+        short_stops: dict = {}
+        for st_ in stops:
+            if c - 60 < st_["t"] <= c and st_["minutes"] < 8:
+                short_stops[st_["station"]] = short_stops.get(st_["station"], 0) + 1
+        for st_name, n in short_stops.items():
+            if n >= 3:
+                cand.append(("micro_stops", f"{STATION_RU[st_name].capitalize()}: {n} коротких остановок за час"))
+                break
         if defects30 >= 2:
             cand.append(("defect_burst", f"{defects30} дефекта окраски за 30 мин"))
         for typ, text in cand:
@@ -93,14 +110,15 @@ def bucket(a: "Alert") -> str:
         return "buffer_empty" if x["buf_pa"] == 0 else "buffer_low"
     if a.type == "stop_long":
         return {"paint": "stop_paint", "assembly": "stop_asm"}.get(a.x["stop_station"], "stop_other")
-    if a.type == "paint_slow":
-        return "paint_slow"
+    if a.type in ("paint_slow", "shortage", "micro_stops"):
+        return a.type
     return "defect_burst"
 
 
 BUCKET_RU = {"buffer_empty": "Буфер перед сборкой пуст", "buffer_low": "В буфере 1–3 кузова", "stop_paint": "Окраска стоит > 8 мин",
              "stop_asm": "Сборка стоит > 8 мин", "stop_other": "Сварка стоит > 8 мин",
-             "paint_slow": "Окраска не успевает", "defect_burst": "Всплеск брака окраски"}
+             "paint_slow": "Окраска не успевает", "defect_burst": "Всплеск брака окраски",
+             "shortage": "Склад не выдаёт комплектующие", "micro_stops": "Частые короткие остановки"}
 
 
 class AlertLearner:

@@ -58,6 +58,7 @@ class LineParams:
     shift_minutes: float = 480.0
     degradations: tuple[Degradation, ...] = ()
     forced_downs: tuple[ForcedDown, ...] = ()
+    shortages: tuple[tuple[float, float], ...] = ()   # (начало, минут) — склад не выдаёт комплектующие
 
     def with_(self, **kw) -> "LineParams":
         return replace(self, **kw)
