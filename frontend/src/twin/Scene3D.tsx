@@ -8,23 +8,15 @@ import { BUFFERS, LINKS, STATE_HEX, STATE_RU, STATUS_HEX, ZONES, ZONE_BY_ID, ZON
 import { useView } from './store'
 import { useCause } from './useCause'
 import { CauseBadges, CauseFx3D, CauseProjector } from './CauseFx'
+import { AssemblyLine, PaintBooth, QcArch, Racks, Sedan, WeldRobot } from './models'
 
 type Frame = SimRun['frames'][number]
 
 const BODY_COLOR = '#f7f8fa'
 const PAINTED = '#3b5b8c'
 
-function CarBody({ position, color = BODY_COLOR, scale = 1, rotY = Math.PI / 2 }: { position: [number, number, number]; color?: string; scale?: number; rotY?: number }) {
-  return (
-    <group position={position} scale={scale} rotation={[0, rotY, 0]}>
-      <RoundedBox args={[1.6, 0.42, 0.78]} radius={0.12} position={[0, 0.3, 0]} castShadow>
-        <meshStandardMaterial color={color} roughness={0.35} metalness={0.1} />
-      </RoundedBox>
-      <RoundedBox args={[0.85, 0.34, 0.7]} radius={0.12} position={[-0.08, 0.62, 0]} castShadow>
-        <meshStandardMaterial color={color} roughness={0.35} metalness={0.1} />
-      </RoundedBox>
-    </group>
-  )
+function CarBody(props: { position: [number, number, number]; color?: string; scale?: number; rotY?: number }) {
+  return <Sedan {...props} />
 }
 
 function Beacon({ state, y }: { state: StationState; y: number }) {
@@ -41,73 +33,22 @@ function Beacon({ state, y }: { state: StationState; y: number }) {
   )
 }
 
-function RobotArm({ x, z, working, phase }: { x: number; z: number; working: boolean; phase: number }) {
-  const arm = useRef<THREE.Group>(null)
-  useFrame(({ clock }) => {
-    if (!arm.current) return
-    const k = working ? clock.elapsedTime * 1.6 + phase : phase
-    arm.current.rotation.y = Math.sin(k) * 0.9
-    arm.current.children[1].rotation.z = -0.6 + Math.sin(k * 1.3) * 0.25
-  })
-  return (
-    <group position={[x, 0.2, z]}>
-      <mesh castShadow position={[0, 0.3, 0]}><cylinderGeometry args={[0.55, 0.7, 0.6, 32]} /><meshStandardMaterial color="#d9dde3" roughness={0.5} /></mesh>
-      <group ref={arm} position={[0, 0.6, 0]}>
-        <mesh castShadow position={[0, 0.9, 0]}><boxGeometry args={[0.45, 1.8, 0.45]} /><meshStandardMaterial color="#f08a24" roughness={0.45} /></mesh>
-        <group position={[0, 1.75, 0]}>
-          <mesh castShadow position={[0.85, 0, 0]}><boxGeometry args={[1.7, 0.35, 0.35]} /><meshStandardMaterial color="#f08a24" roughness={0.45} /></mesh>
-        </group>
-      </group>
-    </group>
-  )
-}
-
 function Equipment({ zone, state }: { zone: Zone; state: StationState | null }) {
   const working = state === 'working'
   switch (zone.id) {
     case 'welding':
       return <>
-        <RobotArm x={-2.6} z={-2.4} working={working} phase={0} />
-        <RobotArm x={2.6} z={2.4} working={working} phase={1.7} />
+        <WeldRobot x={-2.4} z={-2.2} working={working} phase={0} />
+        <WeldRobot x={2.4} z={2.2} working={working} phase={1.7} flip />
       </>
     case 'paint':
-      return (
-        <group>
-          <mesh position={[0, 2.1, 0]} castShadow>
-            <boxGeometry args={[9, 4, 6]} />
-            <meshPhysicalMaterial color="#dfe6ef" roughness={0.15} transmission={0.6} thickness={0.5} transparent opacity={0.55} />
-          </mesh>
-          <mesh position={[0, 4.15, 0]}><boxGeometry args={[9.2, 0.15, 6.2]} /><meshStandardMaterial color="#c8ced8" /></mesh>
-          <mesh position={[0, 4.0, 0]}><boxGeometry args={[7, 0.06, 0.4]} /><meshStandardMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={working ? 2 : 0.3} toneMapped={false} /></mesh>
-        </group>
-      )
+      return <PaintBooth working={working} />
     case 'assembly':
-      return (
-        <group>
-          <mesh position={[0, 0.45, 0]} receiveShadow castShadow><boxGeometry args={[16, 0.3, 2.2]} /><meshStandardMaterial color="#9aa3af" roughness={0.6} /></mesh>
-          {[-6, -2, 2, 6].map((x) => (
-            <mesh key={x} position={[x, 1.6, -2.4]} castShadow><boxGeometry args={[1.2, 3, 0.25]} /><meshStandardMaterial color="#d9dde3" /></mesh>
-          ))}
-        </group>
-      )
+      return <AssemblyLine working={working} />
     case 'qc':
-      return (
-        <group>
-          {[-1.8, 1.8].map((z) => <mesh key={z} position={[0, 1.6, z]} castShadow><boxGeometry args={[0.3, 3.2, 0.3]} /><meshStandardMaterial color="#d9dde3" /></mesh>)}
-          <mesh position={[0, 3.3, 0]} castShadow><boxGeometry args={[0.6, 0.3, 4]} /><meshStandardMaterial color="#d9dde3" /></mesh>
-          <mesh position={[0, 3.12, 0]}><boxGeometry args={[0.4, 0.05, 3.6]} /><meshStandardMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={working ? 2.5 : 0.3} toneMapped={false} /></mesh>
-        </group>
-      )
+      return <QcArch working={working} />
     default:
-      return (
-        <group>
-          {[-2.5, 0, 2.5].map((x) => [-3.5, 3.5].map((z) => (
-            <group key={`${x}${z}`} position={[x, 0, z]}>
-              {[0.5, 1.3, 2.1].map((y) => <mesh key={y} position={[0, y, 0]} castShadow><boxGeometry args={[1.8, 0.6, 1.4]} /><meshStandardMaterial color={y === 1.3 ? '#cdb791' : '#d8c6a3'} roughness={0.8} /></mesh>)}
-            </group>
-          )))}
-        </group>
-      )
+      return <Racks />
   }
 }
 
@@ -273,8 +214,8 @@ function CameraRig() {
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * aspect)
     // что должно поместиться в кадр: вся линия или выбранный участок (+ место под панель справа)
     const z = selected ? ZONE_BY_ID[selected] : null
-    const cx = z ? z.x + 9 : 5.5
-    const width = z ? Math.max(z.w, z.d) + 34 : 96
+    const cx = z ? z.x + 7 : 5.5
+    const width = z ? Math.max(z.w, z.d) + 24 : 96
     const depth = z ? z.d + 8 : 30
     const dist = Math.max((width / 2) / Math.tan(hfov / 2), (depth / 2) / Math.tan(vfov / 2)) * 1.1
     const polar = selected ? 0.95 : 0.9
