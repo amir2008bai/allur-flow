@@ -17,7 +17,7 @@ export default function Actions({ whatif, onFutures }: { whatif: WhatIf | null; 
   const setScenario = useView((v) => v.setScenario)
   const cfg = parseCfg(scenario)
   const inSim = (id: string) => cfg.actions.includes(id)
-  const toggleSim = (ids: string[]) => { const all = ids.every(inSim); const acts = all ? cfg.actions.filter((a) => !ids.includes(a)) : [...new Set([...cfg.actions, ...ids])]; setScenario(toCfg(cfg.faults, acts)); window.scrollTo({ top: 0, behavior: 'smooth' }) }
+  const toggleSim = (ids: string[]) => { const all = ids.every(inSim); const acts = all ? cfg.actions.filter((a) => !ids.includes(a)) : [...new Set([...cfg.actions, ...ids])]; setScenario(toCfg(cfg.faults, acts)); document.getElementById('shift-builder')?.scrollIntoView({ behavior: 'smooth' }) }
   if (!whatif) return <div className="text-sm text-slate-500">Сравниваю 6 действий на 20 прогонах…</div>
   const useful = whatif.options.filter((o) => o.significant && o.delta_per_shift > 0)
   const rest = whatif.options.filter((o) => !(o.significant && o.delta_per_shift > 0))

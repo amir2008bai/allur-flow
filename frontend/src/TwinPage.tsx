@@ -60,7 +60,7 @@ export default function TwinPage() {
 
   useEffect(() => { load<SimMeta>('/api/sim/meta', '/bundles/meta.json').then((r) => setMeta(r.data)) }, [])
   useEffect(() => {
-    setRun(null); setFutures(null); useView.getState().setPlaying(false)
+    setFutures(null); useView.getState().setPlaying(false)
     load<SimRun>(`/api/sim/run?scenario=${encodeURIComponent(scenario)}&seed=${seed}`, `/bundles/run_${scenario}.json`).then((r) => { setRun(r.data); setMode(r.mode) })
       }, [scenario, seed])
   const faultsOnly = toCfg(parseCfg(scenario).faults, [])
@@ -74,7 +74,6 @@ export default function TwinPage() {
 
   return (
     <div className="space-y-6">
-      <ShiftBuilder />
       <div id="twin-viewer" className="flex scroll-mt-20 flex-wrap items-center gap-2">
         <h2 className="text-lg font-semibold">Как идёт смена на линии</h2>
         <span className="text-sm text-slate-500">{run?.scenario_name ?? ''}</span>
@@ -108,6 +107,13 @@ export default function TwinPage() {
             </div>
             <div className="border-t border-slate-100 px-5 py-4"><Timeline run={run} /></div>
           </Card>}
+        </>
+      )}
+
+      <div id="shift-builder" className="scroll-mt-20"><ShiftBuilder /></div>
+
+      {run && (
+        <>
 
           <Actions whatif={whatif} onFutures={(id) => { setFutures(id); document.getElementById('twin-viewer')?.scrollIntoView({ behavior: 'smooth' }) }} />
 
