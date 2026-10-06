@@ -4,10 +4,11 @@ import type { SimRun } from '../source'
 import { Card, SourceBadge } from '../ui'
 import CauseBanner from './CauseBanner'
 import Plan2D from './Plan2D'
-import Timeline from './Timeline'
+import Timeline, { clock } from './Timeline'
 import { useView } from './store'
 
 const Scene3D = lazy(() => import('./Scene3D'))
+const plural = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'машину' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'машины' : 'машин')
 
 interface FuturesPayload { action: { id: string; name: string; detail: string }; do_nothing: SimRun; intervene: SimRun }
 
@@ -32,6 +33,8 @@ export default function Futures({ scenario, action, onClose }: { scenario: strin
   const a = f.do_nothing.frames[i]?.good ?? 0
   const b = f.intervene.frames[i]?.good ?? 0
   const d = b - a
+  const dEnd = f.intervene.frames[f.intervene.frames.length - 1].good - f.do_nothing.frames[f.do_nothing.frames.length - 1].good
+  const inService = f.intervene.frames[i]?.states.paint === 'down' || (t >= 200 && t <= 260 && f.action.id === 'paint_service')
 
   const pane = (run: SimRun, title: string, good: number, tone: 'base' | 'good') => (
     <div className="relative overflow-hidden rounded-2xl bg-[#f4f5f7] ring-1 ring-slate-200">
@@ -45,7 +48,7 @@ export default function Futures({ scenario, action, onClose }: { scenario: strin
         <div className="text-[10px] text-slate-500">годных</div>
         <div className="text-xl font-semibold tabular-nums leading-none">{good}</div>
       </div>
-      <div className="[&>div]:bottom-3"><CauseBanner run={run} /></div>
+      <CauseBanner run={run} compact />
     </div>
   )
 
@@ -62,19 +65,23 @@ export default function Futures({ scenario, action, onClose }: { scenario: strin
         <SourceBadge source="sim" />
         <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100" aria-label="Закрыть">✕</button>
       </div>
+      {/* понятная разница: к кому относится число и что будет к концу смены */}
+      <div className="grid gap-3 border-b border-slate-100 px-5 py-3 sm:grid-cols-2">
+        <div className="flex items-baseline gap-3">
+          <span className={`text-3xl font-semibold tabular-nums ${d > 0 ? 'text-emerald-600' : d < 0 ? 'text-red-600' : 'text-slate-400'}`}>{d > 0 ? '+' : ''}{d}</span>
+          <span className="text-sm text-slate-600">
+            сейчас ({clock(t)}): справа на {Math.abs(d)} {plural(Math.abs(d))} {d > 0 ? 'больше' : d < 0 ? 'меньше' : '— поровну'}
+            {d < 0 && inService ? <span className="block text-xs text-slate-400">идёт обслуживание — линия стоит, потом догоняет</span> : null}
+          </span>
+        </div>
+        <div className="flex items-baseline gap-3">
+          <span className={`text-3xl font-semibold tabular-nums ${dEnd > 0 ? 'text-emerald-600' : dEnd < 0 ? 'text-red-600' : 'text-slate-400'}`}>{dEnd > 0 ? '+' : ''}{dEnd}</span>
+          <span className="text-sm text-slate-600">к концу 2 смен: «{f.action.name}» даёт {dEnd >= 0 ? 'больше' : 'меньше'} на {Math.abs(dEnd)} {plural(Math.abs(dEnd))}</span>
+        </div>
+      </div>
       <div className="relative grid gap-3 p-3 lg:grid-cols-2">
         {pane(f.do_nothing, 'Ничего не делаем', a, 'base')}
         {pane(f.intervene, f.action.name, b, 'good')}
-        {/* живой счётчик разницы между будущими */}
-        <div className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 lg:block">
-          <div className={`rounded-2xl px-5 py-3 text-center shadow-2xl ring-4 ring-white transition-colors ${d > 0 ? 'bg-emerald-600 text-white' : d < 0 ? 'bg-red-600 text-white' : 'bg-white text-slate-700'}`}>
-            <div className="text-3xl font-bold tabular-nums leading-none">{d > 0 ? '+' : ''}{d}</div>
-            <div className="mt-1 text-[11px] opacity-90">машин</div>
-          </div>
-        </div>
-      </div>
-      <div className="flex items-center justify-center gap-2 pb-1 text-sm lg:hidden">
-        <span className={`rounded-full px-3 py-1 font-semibold ${d > 0 ? 'bg-emerald-600 text-white' : 'bg-slate-100'}`}>{d > 0 ? '+' : ''}{d} машин</span>
       </div>
       <div className="border-t border-slate-100 px-5 py-4"><Timeline run={f.do_nothing} /></div>
     </Card>
