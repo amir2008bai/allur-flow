@@ -51,3 +51,15 @@ def test_api_sim():
     w = c.get("/api/sim/whatif", params={"reps": 10}).json()
     best = w["options"][0]
     assert best["id"] == "paint_service" and best["significant"] and best["delta_per_shift"] > 0
+
+
+def test_actions_have_money_assumptions():
+    from app.sim.api import _whatif, meta
+    from app.sim.params import INTERVENTIONS, MONEY_DEFAULTS
+    assert all({"month", "once"} <= set(v["money"]) for v in INTERVENTIONS.values())
+    assert meta()["money"]["margin_per_car"] == MONEY_DEFAULTS["margin_per_car"]
+    w = _whatif("base", 20)
+    assert all("money" in o for o in w["options"])
+    if w["combo"]:
+        a, b = w["combo"]["ids"]
+        assert w["combo"]["money"]["once"] == INTERVENTIONS[a]["money"]["once"] + INTERVENTIONS[b]["money"]["once"]

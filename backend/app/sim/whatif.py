@@ -61,7 +61,7 @@ def compare(base: LineParams, intervention_ids: list[str], reps: int = 20, seed0
         m, lo, hi = paired_ci(good - b_good)
         tops = [bottleneck(r)["top"] for r in runs]
         out["options"].append({
-            "id": iid, "name": spec["name"], "detail": spec["detail"], "do": spec.get("do", ""), "cost": spec.get("cost", ""),
+            "id": iid, "name": spec["name"], "detail": spec["detail"], "do": spec.get("do", ""), "cost": spec.get("cost", ""), "money": spec.get("money"),
             "changes": param_changes(base, spec["apply"](base)),
             "good_per_shift": float(good.mean()),
             "delta_per_shift": m, "ci95": [lo, hi],
@@ -84,5 +84,6 @@ def compare(base: LineParams, intervention_ids: list[str], reps: int = 20, seed0
         m, lo, hi = paired_ci(good - b_good)
         out["combo"] = {"ids": [a, b], "names": [INTERVENTIONS[a]["name"], INTERVENTIONS[b]["name"]],
                         "good_per_shift": float(good.mean()), "delta_per_shift": m, "ci95": [lo, hi],
-                        "closes_gap": lo > 0 and float(good.mean()) >= plan}
+                        "closes_gap": lo > 0 and float(good.mean()) >= plan,
+                        "money": {k: INTERVENTIONS[a]["money"][k] + INTERVENTIONS[b]["money"][k] for k in ("month", "once")}}
     return out

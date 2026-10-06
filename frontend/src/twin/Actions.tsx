@@ -1,6 +1,7 @@
 import { Box, ChevronDown, CircleCheck, Columns2, Factory, Sparkles, Target, Wallet } from 'lucide-react'
 import { useState } from 'react'
 import type { WhatIf } from '../source'
+import { effect, tenge, useMoney } from '../money'
 import { Card } from '../ui'
 import { useView } from './store'
 
@@ -10,6 +11,7 @@ const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString('ru-RU')
 export default function Actions({ whatif, onFutures }: { whatif: WhatIf | null; onFutures: (id: string) => void }) {
   const [more, setMore] = useState(false)
   const ask = useView((v) => v.ask)
+  const money = useMoney()
   if (!whatif) return <div className="text-sm text-slate-500">Сравниваю 6 действий на 20 прогонах…</div>
   const useful = whatif.options.filter((o) => o.significant && o.delta_per_shift > 0)
   const rest = whatif.options.filter((o) => !(o.significant && o.delta_per_shift > 0))
@@ -45,7 +47,7 @@ export default function Actions({ whatif, onFutures }: { whatif: WhatIf | null; 
             </div>
             <div className="text-right">
               <div className="text-3xl font-semibold tabular-nums text-emerald-600">+{n1(combo.delta_per_shift)}</div>
-              <div className="text-xs text-slate-500">машин за смену</div>
+              <div className="text-xs text-slate-500">машин за смену{combo.money ? ` · ≈ ${tenge(effect(combo.delta_per_shift, combo.money, money).netMonth)} в месяц` : ''}</div>
             </div>
             {combo.closes_gap && <span className="flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white"><CircleCheck size={14} />план выполнен</span>}
           </div>

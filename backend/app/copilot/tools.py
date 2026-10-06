@@ -7,7 +7,7 @@ from __future__ import annotations
 from ..findings import all_findings
 from ..learn.api import alerts, calib, forecast_payload
 from ..sim.api import _whatif, run_payload
-from ..sim.params import STATION_RU
+from ..sim.params import MONEY_DEFAULTS, STATION_RU
 
 ZONES = {"warehouse_in": "Склад комплектующих", "welding": "Сварка", "paint": "Окраска", "assembly": "Сборка",
          "qc": "Контроль качества", "warehouse_out": "Склад готовой продукции"}
@@ -47,7 +47,21 @@ def compare_actions() -> dict:
             "лучшая_пара": ({"действия": w["combo"]["names"], "прирост": round(w["combo"]["delta_per_shift"], 1), "план_выполнен": w["combo"]["closes_gap"]} if w.get("combo") else None),
             "действия": [{"действие": o["name"], "прирост_машин_за_смену": round(o["delta_per_shift"], 1),
                           "интервал_95": [round(o["ci95"][0], 1), round(o["ci95"][1], 1)],
-                          "эффект_подтверждён": o["significant"], "выполняет_план": o["closes_gap"]} for o in w["options"] if o["significant"] and o["delta_per_shift"] > 0]}
+                          "эффект_подтверждён": o["significant"], "выполняет_план": o["closes_gap"],
+                          **_money(o["delta_per_shift"], o.get("money"))} for o in w["options"] if o["significant"] and o["delta_per_shift"] > 0],
+            "деньги_допущения": {"маржа_с_машины_тг": MONEY_DEFAULTS["margin_per_car"], "смен_в_месяц": _SHIFTS_MONTH,
+                                 "примечание": "маржа и затраты — допущения A8; пользователь меняет их в калькуляторе"}}
+
+
+_SHIFTS_MONTH = MONEY_DEFAULTS["work_days_month"] * MONEY_DEFAULTS["shifts_per_day"]
+
+
+def _money(delta: float, cost: dict | None) -> dict:
+    if not cost:
+        return {}
+    net = delta * _SHIFTS_MONTH * MONEY_DEFAULTS["margin_per_car"] - cost["month"]
+    return {"затраты_в_месяц_тг": cost["month"], "разовые_вложения_тг": cost["once"], "чистый_эффект_в_месяц_тг": round(net, -4),
+            "окупаемость_дней": (max(1, round(cost["once"] / (net / MONEY_DEFAULTS["work_days_month"]))) if cost["once"] and net > 0 else None)}
 
 
 def get_paint_quality() -> dict:

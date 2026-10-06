@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from ..db import connect, log_run
 from .engine import simulate
 from .kpi import bottleneck, kpis
-from .params import (ASSUMPTIONS, BUFFER_RU, BUFFERS, INTERVENTIONS, SCENARIO_RU, SCENARIOS, STATION_RU,
+from .params import (ASSUMPTIONS, MONEY_DEFAULTS, BUFFER_RU, BUFFERS, INTERVENTIONS, SCENARIO_RU, SCENARIOS, STATION_RU,
                      STATIONS)
 from .whatif import compare
 
@@ -87,7 +87,8 @@ def meta() -> dict:
         "stations": [{"id": s, "name": STATION_RU[s]} for s in STATIONS],
         "buffers": [{"id": b, "name": BUFFER_RU[b], "cap": SCENARIOS["base"].buffer_cap[b]} for b in BUFFERS],
         "scenarios": [{"id": k, "name": SCENARIO_RU[k]} for k in SCENARIOS],
-        "interventions": [{"id": k, "name": v["name"], "detail": v["detail"]} for k, v in INTERVENTIONS.items()],
+        "interventions": [{"id": k, "name": v["name"], "detail": v["detail"], "money": v["money"]} for k, v in INTERVENTIONS.items()],
+        "money": MONEY_DEFAULTS,
         "assumptions": ASSUMPTIONS,
     }
 

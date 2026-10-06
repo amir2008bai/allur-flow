@@ -6,6 +6,7 @@ import Plan2D from './twin/Plan2D'
 import CauseBanner from './twin/CauseBanner'
 import Futures from './twin/Futures'
 import Actions from './twin/Actions'
+import MoneyCalc from './twin/MoneyCalc'
 import { ZONES } from './twin/layout'
 import Timeline from './twin/Timeline'
 import ZonePanel from './twin/ZonePanel'
@@ -136,6 +137,8 @@ export default function TwinPage() {
           </div>
 
           <Actions whatif={whatif} onFutures={(id) => { setFutures(id); window.scrollTo({ top: 0, behavior: 'smooth' }) }} />
+
+          <MoneyCalc whatif={whatif} />
 
           <Dashboard run={run} />
 

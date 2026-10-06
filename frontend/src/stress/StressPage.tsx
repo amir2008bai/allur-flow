@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
+import { tenge, useMoney } from '../money'
 import { ArrowUpRight, Bomb, CheckCircle2, PackageX, PlugZap, RotateCcw, Sparkles, Target, Unlink, Users, Wind, XCircle, Zap, type LucideIcon } from 'lucide-react'
 import ErrorBoundary from '../ErrorBoundary'
 import type { SimRun } from '../source'
@@ -47,6 +48,7 @@ export default function StressPage() {
   const [seed, setSeed] = useState(101)
   const [data, setData] = useState<Record<string, DataResult>>({})
   const [view, setView] = useState<'3d' | 'plan'>('plan')
+  const margin = useMoney((m) => m.margin)
   const t = useView((v) => v.t)
 
   useEffect(() => { fetch('/api/stress/scenarios').then((r) => r.json()).then(setList).catch(() => {}) }, [])
@@ -122,7 +124,7 @@ export default function StressPage() {
           {/* итог: сколько машин потеряли */}
           <div className="grid gap-3 border-b border-slate-100 p-5 sm:grid-cols-2 lg:grid-cols-4">
             <Kpi label="Годных за 2 смены" value={`${n0(s.good_fault)}`} sub={`без сбоев было бы ${n0(s.good_base)}`} />
-            <Kpi label="Потеряно" value={`−${n0(s.loss)} ${plural(s.loss)}`} sub={`−${Math.round(s.loss_pct)}% выпуска`} tone="bad" />
+            <Kpi label="Потеряно" value={`−${n0(s.loss)} ${plural(s.loss)}`} sub={`−${Math.round(s.loss_pct)}% выпуска · ≈ ${tenge(s.loss * margin)} маржи`} tone="bad" />
             <Kpi label="План 240 за 2 смены" value={`${Math.round(s.plan_pct_fault)}%`} sub={`без сбоев ${Math.round(s.plan_pct_base)}%`} tone={s.plan_pct_fault < 95 ? 'bad' : undefined} />
             <Kpi label="КПД линии (OEE)" value={`${Math.round(s.oee_fault)}%`} sub={`было ${Math.round(s.oee_base)}% · простоев ${n0(s.downtime_fault)} мин вместо ${n0(s.downtime_base)}`} tone={s.oee_fault < 85 ? 'bad' : undefined} />
           </div>
