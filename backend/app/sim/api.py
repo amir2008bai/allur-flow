@@ -14,6 +14,8 @@ from .kpi import bottleneck, kpis
 from .params import (ASSUMPTIONS, MONEY_DEFAULTS, BUFFER_RU, BUFFERS, INTERVENTIONS, SCENARIO_RU, SCENARIOS, STATION_RU,
                      STATIONS)
 from .whatif import compare
+from .params import model_mix
+from ..dataset import active_facts
 
 router = APIRouter(prefix="/api/sim")
 IDEAL_LINE_CYCLE = 3.4  # допущение A7: план 120/смену ≈ цель OEE 85% → 0,85×480/120
@@ -89,6 +91,7 @@ def meta() -> dict:
         "scenarios": [{"id": k, "name": SCENARIO_RU[k]} for k in SCENARIOS],
         "interventions": [{"id": k, "name": v["name"], "detail": v["detail"], "money": v["money"]} for k, v in INTERVENTIONS.items()],
         "money": MONEY_DEFAULTS,
+        "models": model_mix(active_facts()),
         "assumptions": ASSUMPTIONS,
     }
 

@@ -1,24 +1,71 @@
-// Деньги: маржа и календарь — допущения пользователя (A8). Хранятся в браузере как удобство.
+// Деньги: модели и план — факт из данных; цены, маржа % и календарь — допущения (A8), меняются в калькуляторе.
 import { create } from 'zustand'
 
-export interface MoneyCfg { margin: number; days: number; shifts: number }
-const DEFAULT: MoneyCfg = { margin: 400_000, days: 22, shifts: 2 }
-const KEY = 'allur.money'
+export interface CarModel { model: string; plan_month: number; share: number; price: number }
+export interface MoneyCfg { models: CarModel[]; pct: number; days: number; shifts: number }
 
-function read(): MoneyCfg {
-  try { return { ...DEFAULT, ...JSON.parse(localStorage.getItem(KEY) || '{}') } } catch { return DEFAULT }
+// Тестовые данные ТЗ — пока /api/sim/meta не ответил (реальные модели придут с сервера через init).
+const DEFAULT_MODELS: CarModel[] = [
+  { model: 'Chevrolet Onix', plan_month: 2500, share: 2500 / 4800, price: 7_500_000 },
+  { model: 'Chevrolet Cobalt', plan_month: 1800, share: 1800 / 4800, price: 7_300_000 },
+  { model: 'JAC J7', plan_month: 500, share: 500 / 4800, price: 8_500_000 },
+]
+const DEFAULT: MoneyCfg = { models: DEFAULT_MODELS, pct: 5, days: 22, shifts: 2 }
+const KEY = 'allur.money.v2'
+
+type Saved = { prices?: Record<string, number>; pct?: number; days?: number; shifts?: number }
+function readSaved(): Saved { try { return JSON.parse(localStorage.getItem(KEY) || '{}') } catch { return {} } }
+function apply(models: CarModel[], s: Saved): MoneyCfg {
+  return { models: models.map((m) => ({ ...m, price: s.prices?.[m.model] ?? m.price })), pct: s.pct ?? DEFAULT.pct, days: s.days ?? DEFAULT.days, shifts: s.shifts ?? DEFAULT.shifts }
 }
 
-export const useMoney = create<MoneyCfg & { set: (p: Partial<MoneyCfg>) => void; reset: () => void; isDefault: () => boolean }>((set, get) => ({
-  ...read(),
-  set: (p) => set(() => {
-    const next = { margin: get().margin, days: get().days, shifts: get().shifts, ...p }
-    try { localStorage.setItem(KEY, JSON.stringify(next)) } catch { /* без хранилища — только в этой вкладке */ }
-    return next
-  }),
-  reset: () => { try { localStorage.removeItem(KEY) } catch { /* */ } set(DEFAULT) },
-  isDefault: () => get().margin === DEFAULT.margin && get().days === DEFAULT.days && get().shifts === DEFAULT.shifts,
+/** Маржа одной машины: цена × маржа %. Средняя — по доле модели в плане. */
+export const marginOf = (m: CarModel, pct: number) => m.price * pct / 100
+export const avgMargin = (c: MoneyCfg) => c.models.reduce((s, m) => s + m.share * marginOf(m, c.pct), 0)
+
+interface Store extends MoneyCfg {
+  base: CarModel[]          // модели с ценами по умолчанию (с сервера)
+  margin: number            // средняя маржа с машины
+  init: (models: CarModel[]) => void
+  set: (p: Partial<Omit<MoneyCfg, 'models'>>) => void
+  setPrice: (model: string, price: number) => void
+  reset: () => void
+  isDefault: () => boolean
+}
+
+function save(c: MoneyCfg, base: CarModel[]) {
+  const prices = Object.fromEntries(c.models.filter((m) => m.price !== base.find((b) => b.model === m.model)?.price).map((m) => [m.model, m.price]))
+  try { localStorage.setItem(KEY, JSON.stringify({ prices, pct: c.pct, days: c.days, shifts: c.shifts })) } catch { /* без хранилища — только в этой вкладке */ }
+}
+
+const start = apply(DEFAULT_MODELS, readSaved())
+export const useMoney = create<Store>((set, get) => ({
+  ...start, base: DEFAULT_MODELS, margin: avgMargin(start),
+  init: (models) => {
+    if (!models.length) return
+    const c = apply(models, readSaved())
+    set({ ...c, base: models, margin: avgMargin(c) })
+  },
+  set: (p) => { const c = { ...get(), ...p }; save(c, get().base); set({ ...p, margin: avgMargin(c) }) },
+  setPrice: (model, price) => {
+    const models = get().models.map((m) => (m.model === model ? { ...m, price } : m))
+    const c = { ...get(), models }; save(c, get().base); set({ models, margin: avgMargin(c) })
+  },
+  reset: () => {
+    try { localStorage.removeItem(KEY) } catch { /* */ }
+    const c = { ...DEFAULT, models: get().base }
+    set({ ...c, margin: avgMargin(c) })
+  },
+  isDefault: () => {
+    const g = get()
+    return g.pct === DEFAULT.pct && g.days === DEFAULT.days && g.shifts === DEFAULT.shifts && g.models.every((m) => m.price === g.base.find((b) => b.model === m.model)?.price)
+  },
 }))
+
+/** Сколько машин каждой модели в N машинах — по доле в плане. */
+export function splitByModel(n: number, models: CarModel[]) {
+  return models.map((m) => ({ model: m.model, n: n * m.share }))
+}
 
 /** Тенге коротко: 1,2 млрд ₸ · 35,4 млн ₸ · 850 тыс. ₸ */
 export function tenge(x: number): string {
@@ -31,7 +78,7 @@ export function tenge(x: number): string {
 }
 
 /** Эффект действия: +машин за смену → деньги в месяц и год за вычетом затрат; окупаемость разовых вложений. */
-export function effect(deltaPerShift: number, cost: { month: number; once: number }, c: MoneyCfg) {
+export function effect(deltaPerShift: number, cost: { month: number; once: number }, c: { margin: number; days: number; shifts: number }) {
   const shiftsMonth = c.days * c.shifts
   const carsMonth = deltaPerShift * shiftsMonth
   const grossMonth = carsMonth * c.margin
@@ -40,3 +87,6 @@ export function effect(deltaPerShift: number, cost: { month: number; once: numbe
   const paybackDays = cost.once > 0 && netMonth > 0 ? Math.ceil(cost.once / (netMonth / c.days)) : null
   return { shiftsMonth, carsMonth, grossMonth, netMonth, netYear, paybackDays }
 }
+
+// Модели и цены по умолчанию — с сервера (после загрузки реальных данных там будут их модели).
+fetch('/api/sim/meta').then((r) => (r.ok ? r.json() : null)).then((m) => { if (m?.models) useMoney.getState().init(m.models) }).catch(() => { /* офлайн — тестовые модели */ })

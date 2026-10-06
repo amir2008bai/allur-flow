@@ -26,7 +26,8 @@ export interface SimMeta {
   buffers: { id: string; name: string; cap: number }[]
   scenarios: { id: string; name: string }[]
   interventions: { id: string; name: string; detail: string; money?: Money }[]
-  money?: { margin_per_car: number; work_days_month: number; shifts_per_day: number; note: string }
+  models?: { model: string; plan_month: number; share: number; price: number; margin: number }[]
+  money?: { margin_pct: number; work_days_month: number; shifts_per_day: number; note: string }
   assumptions: { id: string; text: string; source: string }[]
 }
 

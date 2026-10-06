@@ -57,7 +57,11 @@ def test_actions_have_money_assumptions():
     from app.sim.api import _whatif, meta
     from app.sim.params import INTERVENTIONS, MONEY_DEFAULTS
     assert all({"month", "once"} <= set(v["money"]) for v in INTERVENTIONS.values())
-    assert meta()["money"]["margin_per_car"] == MONEY_DEFAULTS["margin_per_car"]
+    m = meta()
+    assert m["money"]["margin_pct"] == MONEY_DEFAULTS["margin_pct"]
+    assert [x["model"] for x in m["models"]] == ["Chevrolet Onix", "Chevrolet Cobalt", "JAC J7"]
+    assert abs(sum(x["share"] for x in m["models"]) - 1) < 1e-9
+    assert 300_000 < sum(x["share"] * x["margin"] for x in m["models"]) < 450_000
     w = _whatif("base", 20)
     assert all("money" in o for o in w["options"])
     if w["combo"]:

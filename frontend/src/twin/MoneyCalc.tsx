@@ -1,6 +1,6 @@
 import { RotateCcw, Sparkles, Wallet } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { effect, tenge, useMoney } from '../money'
+import { effect, marginOf, tenge, useMoney } from '../money'
 import type { Money, WhatIf } from '../source'
 import { Card, SourceBadge } from '../ui'
 import { useView } from './store'
@@ -11,7 +11,7 @@ const NONE: Money = { month: 0, once: 0 }
 function Num({ label, value, onChange, unit, w = 'w-28' }: { label: string; value: number; onChange: (v: number) => void; unit?: string; w?: string }) {
   return (
     <label className="flex flex-col gap-1 text-xs text-slate-500">
-      {label}
+      {label && <span>{label}</span>}
       <span className="flex items-center gap-1.5">
         <input type="text" inputMode="numeric" value={value.toLocaleString('ru-RU')}
           onChange={(e) => { const v = Number(e.target.value.replace(/\D/g, '')); if (Number.isFinite(v)) onChange(v) }}
@@ -67,8 +67,28 @@ export default function MoneyCalc({ whatif }: { whatif: WhatIf | null }) {
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
         {/* входные цифры */}
         <div className="space-y-3 rounded-2xl bg-slate-50/60 p-4 ring-1 ring-slate-100">
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-xs text-slate-500">
+              <th className="pb-1 font-normal">Модель</th><th className="pb-1 text-right font-normal">план/мес</th>
+              <th className="pb-1 pl-3 font-normal">Цена</th><th className="pb-1 text-right font-normal">маржа</th>
+            </tr></thead>
+            <tbody>
+              {cfg.models.map((m) => (
+                <tr key={m.model}>
+                  <td className="py-1 pr-2 font-medium text-slate-800">{m.model}</td>
+                  <td className="py-1 text-right tabular-nums text-slate-500">{m.plan_month.toLocaleString('ru-RU')}</td>
+                  <td className="py-1 pl-3"><Num label="" value={m.price} onChange={(v) => cfg.setPrice(m.model, v)} w="w-28" /></td>
+                  <td className="py-1 text-right tabular-nums text-slate-700">{tenge(marginOf(m, cfg.pct))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="flex items-center justify-between rounded-xl bg-white px-3 py-2 text-sm ring-1 ring-slate-200">
+            <span className="text-slate-500">Средняя маржа с машины <span className="text-xs">(по плану моделей)</span></span>
+            <b className="tabular-nums">{tenge(cfg.margin)}</b>
+          </div>
           <div className="flex flex-wrap gap-3">
-            <Num label="Маржа с машины" value={cfg.margin} onChange={(v) => cfg.set({ margin: v })} unit="₸" w="w-32" />
+            <Num label="Маржа завода, % от цены" value={cfg.pct} onChange={(v) => cfg.set({ pct: Math.min(50, v) })} unit="%" w="w-14" />
             <Num label="Рабочих дней в месяц" value={cfg.days} onChange={(v) => cfg.set({ days: Math.min(31, v) })} w="w-16" />
             <Num label="Смен в день" value={cfg.shifts} onChange={(v) => cfg.set({ shifts: Math.min(3, v) })} w="w-14" />
           </div>
@@ -104,8 +124,8 @@ export default function MoneyCalc({ whatif }: { whatif: WhatIf | null }) {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-3xl text-xs text-slate-400">Прирост машин — из симуляции (20 прогонов). Маржа и затраты — допущения: впишите цифры Allur. Это эффект на модели, а не гарантия экономии на заводе.</p>
-        <button onClick={() => ask(`Посчитай эффект в деньгах для «${cur.full}»: +${n1(cur.delta)} машин за смену, маржа ${cfg.margin.toLocaleString('ru-RU')} ₸, затраты ${cost.month.toLocaleString('ru-RU')} ₸ в месяц и ${cost.once.toLocaleString('ru-RU')} ₸ разово. Стоит ли внедрять и какие риски?`)}
+        <p className="max-w-3xl text-xs text-slate-400">Прирост машин — из симуляции (20 прогонов). Модели и план — из данных; цены — ориентир по рознице Казахстана, маржа % и затраты — допущения: впишите цифры Allur. Это эффект на модели, а не гарантия экономии на заводе.</p>
+        <button onClick={() => ask(`Посчитай эффект в деньгах для «${cur.full}»: +${n1(cur.delta)} машин за смену, средняя маржа ${Math.round(cfg.margin).toLocaleString('ru-RU')} ₸ с машины (модели: ${cfg.models.map((m) => `${m.model} ${m.price.toLocaleString('ru-RU')} ₸`).join(', ')}; маржа ${cfg.pct}% цены), затраты ${cost.month.toLocaleString('ru-RU')} ₸ в месяц и ${cost.once.toLocaleString('ru-RU')} ₸ разово. Стоит ли внедрять и какие риски?`)}
           className="flex items-center gap-1.5 text-xs font-semibold text-violet-700 hover:text-violet-900"><Sparkles size={13} />Стоит ли внедрять?</button>
       </div>
     </Card>
