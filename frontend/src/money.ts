@@ -77,15 +77,20 @@ export function tenge(x: number): string {
   return `${sign}${f(a, 0)} ₸`
 }
 
-/** Эффект действия: +машин за смену → деньги в месяц и год за вычетом затрат; окупаемость разовых вложений. */
-export function effect(deltaPerShift: number, cost: { month: number; once: number }, c: { margin: number; days: number; shifts: number }) {
+/** Эффект действия в месяц. Пока до плана не хватает — деньги считаем только ДО плана (план — это заказ, его продадут);
+ *  машины сверх плана приносят маржу, только если на них есть спрос, — показываем отдельно.
+ *  План уже выполняется → весь прирост «сверх плана», с пометкой про спрос. */
+export function effect(deltaPerShift: number, cost: { month: number; once: number }, c: { margin: number; days: number; shifts: number }, gapPerShift = Infinity) {
   const shiftsMonth = c.days * c.shifts
-  const carsMonth = deltaPerShift * shiftsMonth
-  const grossMonth = carsMonth * c.margin
-  const netMonth = grossMonth - cost.month
+  const gap = Math.max(0, gapPerShift)
+  const mode: 'plan' | 'extra' = gap > 0.5 ? 'plan' : 'extra'
+  const toPlanCars = Math.min(deltaPerShift, gap) * shiftsMonth
+  const aboveCars = Math.max(0, deltaPerShift - gap) * shiftsMonth
+  const cars = mode === 'plan' ? toPlanCars : toPlanCars + aboveCars
+  const netMonth = cars * c.margin - cost.month
   const netYear = netMonth * 12 - cost.once
   const paybackDays = cost.once > 0 && netMonth > 0 ? Math.ceil(cost.once / (netMonth / c.days)) : null
-  return { shiftsMonth, carsMonth, grossMonth, netMonth, netYear, paybackDays }
+  return { mode, shiftsMonth, cars, aboveMonth: mode === 'plan' ? aboveCars * c.margin : 0, closesGap: deltaPerShift >= gap, netMonth, netYear, paybackDays }
 }
 
 // Модели и цены по умолчанию — с сервера (после загрузки реальных данных там будут их модели).

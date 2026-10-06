@@ -48,7 +48,7 @@ def compare_actions() -> dict:
             "действия": [{"действие": o["name"], "прирост_машин_за_смену": round(o["delta_per_shift"], 1),
                           "интервал_95": [round(o["ci95"][0], 1), round(o["ci95"][1], 1)],
                           "эффект_подтверждён": o["significant"], "выполняет_план": o["closes_gap"],
-                          **_money(o["delta_per_shift"], o.get("money"))} for o in w["options"] if o["significant"] and o["delta_per_shift"] > 0],
+                          **_money(o["delta_per_shift"], o.get("money"), w["gap_per_shift"])} for o in w["options"] if o["significant"] and o["delta_per_shift"] > 0],
             "деньги_допущения": {"средняя_маржа_с_машины_тг": round(avg_margin(_facts()), -3), "смен_в_месяц": _SHIFTS_MONTH,
                                  "модели": [{"модель": m["model"], "план_в_месяц": m["plan_month"], "цена_тг": m["price"], "маржа_тг": m["margin"]} for m in model_mix(_facts())],
                                  "примечание": "маржа и затраты — допущения A8; пользователь меняет их в калькуляторе"}}
@@ -57,11 +57,15 @@ def compare_actions() -> dict:
 _SHIFTS_MONTH = MONEY_DEFAULTS["work_days_month"] * MONEY_DEFAULTS["shifts_per_day"]
 
 
-def _money(delta: float, cost: dict | None) -> dict:
+def _money(delta: float, cost: dict | None, gap: float) -> dict:
+    """Деньги считаем до плана: машины сверх плана приносят маржу, только если на них есть спрос."""
     if not cost:
         return {}
-    net = delta * _SHIFTS_MONTH * avg_margin(_facts()) - cost["month"]
-    return {"затраты_в_месяц_тг": cost["month"], "разовые_вложения_тг": cost["once"], "чистый_эффект_в_месяц_тг": round(net, -4),
+    m = _SHIFTS_MONTH * avg_margin(_facts())
+    to_plan, above = min(delta, gap) * m, max(0.0, delta - gap) * m
+    net = to_plan - cost["month"]
+    return {"затраты_в_месяц_тг": cost["month"], "разовые_вложения_тг": cost["once"],
+            "эффект_до_плана_в_месяц_тг": round(net, -4), "сверх_плана_в_месяц_тг_если_есть_спрос": round(above, -4),
             "окупаемость_дней": (max(1, round(cost["once"] / (net / MONEY_DEFAULTS["work_days_month"]))) if cost["once"] and net > 0 else None)}
 
 

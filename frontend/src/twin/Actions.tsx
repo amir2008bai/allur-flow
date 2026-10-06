@@ -47,7 +47,7 @@ export default function Actions({ whatif, onFutures }: { whatif: WhatIf | null; 
             </div>
             <div className="text-right">
               <div className="text-3xl font-semibold tabular-nums text-emerald-600">+{n1(combo.delta_per_shift)}</div>
-              <div className="text-xs text-slate-500">машин за смену{combo.money ? ` · ≈ ${tenge(effect(combo.delta_per_shift, combo.money, money).netMonth)} в месяц` : ''}</div>
+              <div className="text-xs text-slate-500">машин за смену{combo.money ? ` · ≈ ${tenge(effect(combo.delta_per_shift, combo.money, money, gap).netMonth)} в месяц` : ''}</div>
             </div>
             {combo.closes_gap && <span className="flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white"><CircleCheck size={14} />план выполнен</span>}
           </div>

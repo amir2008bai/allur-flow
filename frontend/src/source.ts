@@ -50,7 +50,7 @@ export interface Money { month: number; once: number }
 export interface WhatIf {
   reps: number; scenario: string
   baseline: { good_per_shift: number; bottleneck: string }
-  options: { id: string; name: string; detail: string; good_per_shift: number; delta_per_shift: number; ci95: [number, number]; significant: boolean; closes_gap: boolean; bottleneck_after: string; do?: string; cost?: string; money?: Money; changes?: { what: string; before: number | string; after: number | string; unit: string; source: string }[] }[]
+  options: { id: string; short?: string; name: string; detail: string; good_per_shift: number; delta_per_shift: number; ci95: [number, number]; significant: boolean; closes_gap: boolean; bottleneck_after: string; do?: string; cost?: string; money?: Money; changes?: { what: string; before: number | string; after: number | string; unit: string; source: string }[] }[]
   plan_per_shift: number; gap_per_shift: number; useful?: string[]
-  combo: { ids: string[]; names: string[]; good_per_shift: number; delta_per_shift: number; ci95: [number, number]; closes_gap: boolean; money?: Money } | null
+  combo: { ids: string[]; names: string[]; shorts?: string[]; good_per_shift: number; delta_per_shift: number; ci95: [number, number]; closes_gap: boolean; money?: Money } | null
 }
