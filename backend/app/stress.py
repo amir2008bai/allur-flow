@@ -16,7 +16,7 @@ from .learn.alerts import bucket, detect_run
 from .learn.stream import _state_minutes
 from .sim.engine import simulate
 from .sim.kpi import bottleneck
-from .sim.params import BASE, STATIONS, Degradation, ForcedDown
+from .sim.params import BASE, STATION_RU, STATIONS, Degradation, ForcedDown
 
 SEEDS = [101, 102, 103, 104, 105]
 
@@ -58,13 +58,13 @@ def _conveyor(run, base):
     t = _first_alert(run, {"stop_asm"}, 600, 660)
     down = sum(e["minutes"] for e in run.events if e["type"] == "stop_start" and e["station"] == "assembly" and 600 <= e["t"] < 601)
     bn = _bn_in(run, 600, 650)
-    return t is not None and bn == "assembly", f"тревога через {t - 600 if t else '—'} мин, простой {down:.0f} мин, узкое место {bn}", (t - 600) if t else None
+    return t is not None and bn == "assembly", f"тревога через {t - 600 if t else '—'} мин, простой {down:.0f} мин, узкое место — {STATION_RU.get(bn, bn).lower()}", (t - 600) if t else None
 
 
 def _filter(run, base):
     bn = _bn_in(run, 360, 960)
     loss = _good(base, 360, 959) - _good(run, 360, 959)
-    return bn == "paint", f"узкое место после 14:00 — {bn}, потеря {loss} машин", None
+    return bn == "paint", f"после 14:00 узкое место — {STATION_RU.get(bn, bn).lower()}, потеря {loss} машин за смену", None
 
 
 def _shortage(run, base):
@@ -92,17 +92,17 @@ def _power(run, base):
     all_down = all(st == "down" for st in f["states"].values())
     out = _good(run, 401, 419)
     t = _first_alert(run, {"stop_paint", "stop_asm", "stop_other"}, 400, 425)
-    return all_down and out == 0, f"в 14:50 все участки стоят: {all_down}, выпуск за 18 мин: {out}", (t - 400) if t else None
+    return all_down and out == 0, (f"в 14:50 стоят все участки, выпуск за 18 мин — {out}" if all_down else f"в 14:50 стоят не все участки, выпуск — {out}"), (t - 400) if t else None
 
 
 SCENARIOS = [
-    {"id": "micro_stops", "name": "Частые микроостановки робота сварки", "params": lambda: _with_station(BASE, "welding", mtbf_work=15, mttr=1.5, mttr_cv=0.3), "check": _micro},
-    {"id": "conveyor_break", "name": "Обрыв цепи конвейера сборки (55 мин)", "params": lambda: BASE.with_(forced_downs=(ForcedDown("assembly", 600, 55, reason="обрыв цепи"),)), "check": _conveyor},
-    {"id": "filter_clog", "name": "Засорение фильтра камеры окраски", "params": lambda: BASE.with_(degradations=(Degradation("paint", 120, 360, cycle_x=1.18, defect_x=2.3),)), "check": _filter},
-    {"id": "parts_shortage", "name": "Нехватка комплектующих (40 мин)", "params": lambda: BASE.with_(shortages=((300.0, 40.0),)), "check": _shortage},
-    {"id": "quality_burst", "name": "Всплеск брака окраски (×5 на час)", "params": lambda: BASE.with_(degradations=(Degradation("paint", 300, 301, defect_x=5, reset_at=360),)), "check": _burst},
-    {"id": "shift_change", "name": "Пересменка: медленный старт (+30% цикла)", "params": lambda: BASE.with_(degradations=tuple(Degradation(s, 480, 481, cycle_x=1.3, reset_at=510) for s in STATIONS)), "check": _shift},
-    {"id": "power_outage", "name": "Отключение электричества (20 мин)", "params": lambda: BASE.with_(forced_downs=tuple(ForcedDown(s, 400, 20, reason="нет питания") for s in STATIONS)), "check": _power},
+    {"id": "micro_stops", "zone": "welding", "window": (0, 960), "detail": "Датчик робота сварки сбоит каждые ~15 мин работы, остановки по 1–2 мин", "name": "Частые микроостановки робота сварки", "params": lambda: _with_station(BASE, "welding", mtbf_work=15, mttr=1.5, mttr_cv=0.3), "check": _micro},
+    {"id": "conveyor_break", "zone": "assembly", "window": (600, 655), "detail": "В 18:00 рвётся цепь конвейера сборки — 55 мин простоя", "name": "Обрыв цепи конвейера сборки (55 мин)", "params": lambda: BASE.with_(forced_downs=(ForcedDown("assembly", 600, 55, reason="обрыв цепи"),)), "check": _conveyor},
+    {"id": "filter_clog", "zone": "paint", "window": (120, 960), "detail": "С 10:00 фильтр камеры забивается: цикл и брак окраски растут", "name": "Засорение фильтра камеры окраски", "params": lambda: BASE.with_(degradations=(Degradation("paint", 120, 360, cycle_x=1.18, defect_x=2.3),)), "check": _filter},
+    {"id": "parts_shortage", "zone": "welding", "window": (300, 340), "detail": "В 13:00 склад 40 мин не выдаёт комплектующие", "name": "Нехватка комплектующих (40 мин)", "params": lambda: BASE.with_(shortages=((300.0, 40.0),)), "check": _shortage},
+    {"id": "quality_burst", "zone": "paint", "window": (300, 360), "detail": "В 13:00 брак окраски вырастает в 5 раз на час", "name": "Всплеск брака окраски (×5 на час)", "params": lambda: BASE.with_(degradations=(Degradation("paint", 300, 301, defect_x=5, reset_at=360),)), "check": _burst},
+    {"id": "shift_change", "zone": "assembly", "window": (480, 510), "detail": "В 16:00 пересменка: первые 30 мин все участки на 30% медленнее", "name": "Пересменка: медленный старт (+30% цикла)", "params": lambda: BASE.with_(degradations=tuple(Degradation(s, 480, 481, cycle_x=1.3, reset_at=510) for s in STATIONS)), "check": _shift},
+    {"id": "power_outage", "zone": "assembly", "window": (400, 420), "detail": "В 14:40 пропадает питание всей линии на 20 мин", "name": "Отключение электричества (20 мин)", "params": lambda: BASE.with_(forced_downs=tuple(ForcedDown(s, 400, 20, reason="нет питания") for s in STATIONS)), "check": _power},
 ]
 
 

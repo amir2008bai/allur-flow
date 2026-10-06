@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 STATES = {"working", "starved", "blocked", "down"}
+BUF_RU = {"b_weld_paint": "сварка → окраска", "b_paint_asm": "окраска → сборка", "b_asm_qc": "сборка → ОТК"}
 NEIGHBORS = {"b_weld_paint": ("welding", "paint"), "b_paint_asm": ("paint", "assembly"), "b_asm_qc": ("assembly", "qc")}
 
 
@@ -41,14 +42,14 @@ def check_frames(frames: list[dict], buffer_cap: dict[str, int], step: float = 1
                 issues.append({"type": "outlier", "t": t, "text": f"скачок выпуска +{f['good'] - prev['good']} за {dt:.0f} мин — невозможно"})
         for b, v in (f.get("buffers") or {}).items():
             if v is None or v < 0 or v > buffer_cap.get(b, 10 ** 6):
-                issues.append({"type": "out_of_range", "t": t, "text": f"буфер {b} = {v} вне 0…{buffer_cap.get(b)}"})
+                issues.append({"type": "out_of_range", "t": t, "text": f"буфер «{BUF_RU.get(b, b)}» = {v}, а мест 0…{buffer_cap.get(b)}"})
             up, dn = NEIGHBORS.get(b, (None, None))
             sts = f.get("states", {})
             both_work = sts.get(up) == "working" and sts.get(dn) == "working"
             if prev is not None and prev.get("buffers", {}).get(b) == v and both_work:
                 same_buf[b] += 1
                 if same_buf[b] == 120:
-                    issues.append({"type": "stuck", "t": t, "text": f"датчик буфера {b} не меняется 2 ч при работающей линии (залип?)"})
+                    issues.append({"type": "stuck", "t": t, "text": f"датчик буфера «{BUF_RU.get(b, b)}» не меняется 2 ч, хотя соседние участки работают (залип?)"})
             else:
                 same_buf[b] = 0
         for st_name, st in (f.get("states") or {}).items():

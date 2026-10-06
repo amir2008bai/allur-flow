@@ -4,14 +4,15 @@ import TwinPage from './TwinPage'
 import LearningPage from './learn/LearningPage'
 import VotePage from './learn/VotePage'
 import Copilot from './Copilot'
+import StressPage from './stress/StressPage'
 import { useView } from './twin/store'
 import type { Facts, Finding } from './types'
 
 const TABS = [
   { id: 'facts', label: 'Факты из ТЗ', ready: true },
   { id: 'twin', label: 'Двойник', ready: true },
-  { id: 'forecast', label: 'Прогноз', ready: false },
   { id: 'learning', label: 'Обучение', ready: true },
+  { id: 'stress', label: 'Испытания', ready: true },
 ]
 
 export default function App() {
@@ -55,6 +56,7 @@ function MainApp() {
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {tab === 'twin' && <TwinPage />}
         {tab === 'learning' && <LearningPage />}
+        {tab === 'stress' && <StressPage />}
         {tab === 'facts' && error && <div className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</div>}
         {tab === 'facts' && !data && !error && <div className="text-sm text-slate-500">Загрузка данных…</div>}
         {tab === 'facts' && data && <FactsPage facts={data.facts} findings={data.findings} />}
