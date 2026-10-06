@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ZoneId } from './layout'
+import { todayISO } from '../dates'
 
 // Только состояние вида: что выбрано, какой момент, какой вид. Сами KPI приходят с сервера.
 interface ViewState {
@@ -19,6 +20,8 @@ interface ViewState {
   setScenario: (s: string) => void
   tab: string
   setTab: (t: string) => void
+  date: string
+  setDate: (d: string) => void
 }
 
 export const useView = create<ViewState>((set) => ({
@@ -31,6 +34,8 @@ export const useView = create<ViewState>((set) => ({
   scenario: 'paint_degradation',
   setScenario: (scenario) => set({ scenario }),
   tab: 'facts',
+  date: todayISO(),
+  setDate: (date) => set({ date }),
   setTab: (tab) => set({ tab }),
   setTouring: (touring) => set({ touring }),
   select: (selected) => set({ selected }),

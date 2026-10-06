@@ -175,7 +175,7 @@ function BottleneckMarker({ y }: { y: number }) {
   return (
     <mesh ref={ref} position={[0, y, 0]}>
       <octahedronGeometry args={[0.45]} />
-      <meshStandardMaterial color="#f59e0b" emissive="#f59e0b" emissiveIntensity={1.2} toneMapped={false} />
+      <meshStandardMaterial color="#7c3aed" emissive="#7c3aed" emissiveIntensity={1.4} toneMapped={false} />
     </mesh>
   )
 }

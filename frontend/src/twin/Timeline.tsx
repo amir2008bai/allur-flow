@@ -2,8 +2,10 @@ import { useEffect, useRef } from 'react'
 import type { SimRun } from '../source'
 import { ZONE_BY_STATION } from './layout'
 import { useView } from './store'
+import { shortDate } from '../dates'
 
-const BN_COLOR: Record<string, string> = { welding: '#94a3b8', paint: '#f59e0b', assembly: '#64748b', qc: '#cbd5e1' }
+// цвета участков на «волне узкого места» — не пересекаются с цветами статусов
+export const BN_COLOR: Record<string, string> = { welding: '#0ea5e9', paint: '#7c3aed', assembly: '#334155', qc: '#a8a29e' }
 
 export function clock(t: number) {
   const m = Math.floor(t) + 8 * 60
@@ -43,7 +45,7 @@ export default function Timeline({ run }: { run: SimRun }) {
       </button>
       <div className="w-24 shrink-0">
         <div className="text-lg font-semibold tabular-nums leading-none">{clock(t)}</div>
-        <div className="mt-1 text-[11px] text-slate-500">смена {shift} · {good} годных</div>
+        <div className="mt-1 text-[11px] text-slate-500">{shortDate(useView.getState().date)} · смена {shift} · {good} годных</div>
       </div>
       <div className="relative flex-1">
         {/* волна узкого места: какой участок ограничивал поток в каждые 10 минут */}
@@ -63,6 +65,10 @@ export default function Timeline({ run }: { run: SimRun }) {
             className="relative h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-slate-900" aria-label="Время смены" />
         </div>
         <div className="mt-1 flex justify-between text-[10px] text-slate-400"><span>08:00</span><span>16:00 · смена 2</span><span>24:00</span></div>
+        <div className="mt-1 flex flex-wrap gap-x-3 text-[10px] text-slate-500">
+          <span>узкое место:</span>
+          {Object.entries(BN_COLOR).filter(([k]) => k !== 'qc').map(([k, c]) => <span key={k} className="flex items-center gap-1"><span className="h-1.5 w-3 rounded-full" style={{ background: c }} />{ZONE_BY_STATION[k]?.name.toLowerCase()}</span>)}
+        </div>
       </div>
       <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} className="shrink-0 rounded-lg bg-white px-2 py-1.5 text-xs ring-1 ring-slate-200" aria-label="Скорость">
         {[5, 20, 60, 120].map((s) => <option key={s} value={s}>×{s * 60}</option>)}

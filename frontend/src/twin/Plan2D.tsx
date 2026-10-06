@@ -91,7 +91,7 @@ export default function Plan2D({ run }: { run: SimRun }) {
               <text x={0.85} y={0} fontSize={0.95} fill="#475569">{STATE_RU[st]}</text>
             </g>}
             {z.id === 'warehouse_out' && <text x={-z.w / 2 + 0.6} y={-z.d / 2 + 2.4} fontSize={0.95} fill="#475569">{frame?.good ?? 0} годных</text>}
-            {bnZone === z.id && <text x={z.w / 2 - 0.6} y={-z.d / 2 + 1.4} textAnchor="end" fontSize={1.2} fill="#f59e0b">◆</text>}
+            {bnZone === z.id && <g transform={`translate(${z.w / 2 - 1.1} ${-z.d / 2 + 1.1})`}><circle r={0.75} fill="#7c3aed" /><path d="M-0.3 -0.38 H0.3 M-0.3 0.38 H0.3 M-0.24 -0.38 L0.24 0.38 M0.24 -0.38 L-0.24 0.38" stroke="#fff" strokeWidth={0.12} strokeLinecap="round" /></g>}
           </g>
         )
       })}

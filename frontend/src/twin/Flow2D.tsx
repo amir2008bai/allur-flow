@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import type { SimRun } from '../source'
 import { BUFFERS, STATE_HEX, STATE_RU, ZONES, ZONE_BY_STATION, type StationState, type ZoneId } from './layout'
 import { useView } from './store'
+import { BottleneckBadge } from '../theme'
 
 type ZoneData = { name: string; equipment: string[]; state: StationState | null; selected: boolean; bottleneck: boolean; good?: number }
 type BufData = { level: number; cap: number; flowing: boolean }
@@ -16,7 +17,7 @@ function ZoneNode({ data }: NodeProps<Node<ZoneData>>) {
       <Handle type="target" position={Position.Left} className="!opacity-0" />
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold text-slate-900">{data.name}</span>
-        {data.bottleneck && <span className="text-amber-500" title="узкое место">◆</span>}
+        {data.bottleneck && <BottleneckBadge size={11} />}
       </div>
       {st ? (
         <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-600">

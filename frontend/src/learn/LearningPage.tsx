@@ -1,7 +1,11 @@
 import ReactECharts from 'echarts-for-react'
+import { Camera, Play } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { clock } from '../twin/Timeline'
+import { addDays, shortDate, todayISO } from '../dates'
+const START = addDays(todayISO(), -4)  // 5 дней потока заканчиваются сегодня
+const dayLabel = (t: number) => shortDate(addDays(START, Math.floor(t / 960)))
 import { Card, SourceBadge } from '../ui'
 import { api, pct, type AlertsState, type CalibState, type CameraLog, type ForecastPayload } from './api'
 
@@ -132,7 +136,7 @@ function ForecastBlock() {
       animation: false,
       grid: { left: 34, right: 8, top: 10, bottom: 22 },
       tooltip: { trigger: 'axis', valueFormatter: (v: number) => `${num(v ?? 0)} маш.` },
-      xAxis: { type: 'value', min: rows[0]?.t, max: end, interval: 960, axisLabel: { ...AX, showMinLabel: false, showMaxLabel: false, formatter: (t: number) => `день ${Math.floor(t / 960) + 1}` }, splitLine: { show: false } },
+      xAxis: { type: 'value', min: rows[0]?.t, max: end, interval: 960, axisLabel: { ...AX, showMinLabel: false, showMaxLabel: false, formatter: (t: number) => dayLabel(t) }, splitLine: { show: false } },
       yAxis: { type: 'value', axisLabel: AX, splitLine: { lineStyle: { color: '#eef1f5' } } },
       series: [
         { name: 'Что показываем', type: 'line', showSymbol: false, lineStyle: { color: '#16a34a', width: 2.5 }, data: rows.map((r) => [r.t, r.mae_served]),
@@ -197,7 +201,7 @@ function ForecastBlock() {
         <p>Цифры — среднее по {m.seeds} разным прогонам симуляции: ошибка {num(m.mae_after_drift.served)} машины против {num(m.mae_after_drift.frozen)} без обучения и {num(m.mae_after_drift.naive)} у простого прогноза.</p>
         <ul className="mt-1 space-y-0.5">
           {f.events.filter((e) => e.type === 'drift' || e.type === 'promotion').map((e, i) => (
-            <li key={i}><span className={e.type === 'drift' ? 'text-red-500' : 'text-emerald-600'}>●</span> день {Math.floor(e.t / 960) + 1}, {clock(e.t % 960)} — {e.text}</li>
+            <li key={i}><span className={e.type === 'drift' ? 'text-red-500' : 'text-emerald-600'}>●</span> {dayLabel(e.t)} {clock(e.t % 960)} — {e.text}</li>
           ))}
         </ul>
       </More>
@@ -260,7 +264,7 @@ function CalibBlock() {
       </div>
       {/* Камера контроля ЛКП: двойник учится сам, без человека */}
       <div className="mt-5 flex flex-wrap items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100">
-        <span className={`grid h-9 w-9 place-items-center rounded-full ${streaming ? 'animate-pulse bg-red-100' : 'bg-white ring-1 ring-slate-200'}`} aria-hidden>📷</span>
+        <span className={`grid h-9 w-9 place-items-center rounded-full ${streaming ? 'animate-pulse bg-red-100' : 'bg-white ring-1 ring-slate-200'}`} aria-hidden><Camera size={18} className="text-slate-700" /></span>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold">Камера контроля окраски</div>
           <div className="text-xs text-slate-500">{st.camera.seen ? `проверено ${st.camera.seen} кузовов · ${st.camera.defects} с дефектом · двойник учится сам` : 'каждый кузов с камеры сразу уточняет брак'}</div>
@@ -268,7 +272,7 @@ function CalibBlock() {
         <div className="flex gap-1">
           {log.slice(0, 16).reverse().map((e, i) => <span key={i} title={e.defect ? `${e.body_id}: ${e.defect_class}` : `${e.body_id}: без дефекта`} className={`h-5 w-1.5 rounded-sm ${e.defect ? 'bg-red-500' : 'bg-emerald-400'}`} />)}
         </div>
-        <button disabled={streaming} onClick={runCamera} className="rounded-xl bg-white px-3 py-2 text-xs font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100 disabled:opacity-50">{streaming ? 'Идёт поток…' : '▶ Поток камеры (демо)'}</button>
+        <button disabled={streaming} onClick={runCamera} className="rounded-xl bg-white px-3 py-2 text-xs font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100 disabled:opacity-50">{streaming ? 'Идёт поток…' : <span className="flex items-center gap-1.5"><Play size={12} fill="currentColor" />Поток камеры (демо)</span>}</button>
       </div>
       <More>
         <p>Камера: принимаем события любой камеры контроля ЛКП в открытом формате (POST /api/learn/camera/event). Идея — из кейса Allur Challenge 2025 (распознавание дефектов окраски по фото): камера находит дефект, двойник считает, во что он обходится. С их решением мы не интегрированы — совместимы по формату. Демо-поток — симуляция.</p>

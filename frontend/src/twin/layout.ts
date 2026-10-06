@@ -28,7 +28,7 @@ export const ZONE_BY_STATION = Object.fromEntries(ZONES.filter((z) => z.station)
 export type StationState = 'working' | 'starved' | 'blocked' | 'down'
 export const STATE_RU: Record<StationState, string> = { working: 'работает', starved: 'ждёт кузов', blocked: 'некуда отдать', down: 'стоит' }
 // ISA-101: норма — нейтральная, цвет только для отклонений
-export const STATE_HEX: Record<StationState, string> = { working: '#22c55e', starved: '#cfd5de', blocked: '#f5b942', down: '#ef4444' }
+export const STATE_HEX: Record<StationState, string> = { working: '#22c55e', starved: '#cbd5e1', blocked: '#f59e0b', down: '#ef4444' }  // = theme.STATUS
 
 // Рабочий участок подсвечиваем зелёным (просьба пользователя: видно, где сейчас идёт работа)
 export const WORKING_HEX = '#22c55e'

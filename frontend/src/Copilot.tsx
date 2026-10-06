@@ -1,3 +1,4 @@
+import { Sparkles } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useView } from './twin/store'
 import type { ZoneId } from './twin/layout'
@@ -44,7 +45,7 @@ export default function Copilot() {
 
   if (!open) return (
     <button onClick={() => setOpen(true)} className="fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-xl hover:bg-slate-700">
-      <span className="text-base">✦</span> Спросить двойник
+      <Sparkles size={17} /> Спросить двойник
     </button>
   )
 
@@ -52,7 +53,7 @@ export default function Copilot() {
     <div className="fixed bottom-5 right-5 z-30 flex h-[min(620px,80vh)] w-[min(400px,calc(100vw_-_2.5rem))] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
         <div>
-          <div className="font-semibold">✦ Помощник смены</div>
+          <div className="flex items-center gap-1.5 font-semibold"><Sparkles size={16} className="text-violet-600" />Помощник смены</div>
           <div className="text-[11px] text-slate-500">Отвечает только по данным двойника</div>
         </div>
         <button onClick={() => setOpen(false)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100" aria-label="Закрыть">✕</button>

@@ -14,7 +14,10 @@ const Scene3D = lazy(() => import('./twin/Scene3D'))
 import { load, type Mode, type SimMeta, type SimRun, type WhatIf } from './source'
 import { Card, SourceBadge, fmt } from './ui'
 
-const STATE_COLOR: Record<string, string> = { working: 'bg-slate-700', starved: 'bg-slate-200', blocked: 'bg-amber-300', down: 'bg-red-400' }
+import { BottleneckBadge, STATUS, StatusLegend } from './theme'
+import { Columns2, Orbit, Square } from 'lucide-react'
+import DatePicker from './DatePicker'
+import { seedFromDate } from './dates'
 const STATE_RU: Record<string, string> = { working: 'работает', starved: 'ждёт кузов', blocked: 'некуда отдать', down: 'стоит' }
 
 function Tile({ label, value, unit, note, tone }: { label: string; value: string; unit?: string; note: string; tone?: 'bad' | 'warn' }) {
@@ -48,7 +51,7 @@ function TourButton() {
   return (
     <button onClick={() => { if (touring) useView.getState().select(null); setTouring(!touring) }}
       className="absolute left-3 top-16 rounded-xl bg-white/90 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 backdrop-blur hover:text-slate-900">
-      {touring ? '■ Стоп' : '▶ Обзор линии'}
+      {touring ? <><Square size={14} className="mr-1.5 inline" />Стоп</> : <><Orbit size={15} className="mr-1.5 inline" />Обзор линии</>}
     </button>
   )
 }
@@ -57,6 +60,9 @@ export default function TwinPage() {
   const [meta, setMeta] = useState<SimMeta | null>(null)
   const scenario = useView((v) => v.scenario)
   const setScenario = useView((v) => v.setScenario)
+  const date = useView((v) => v.date)
+  const setDate = useView((v) => v.setDate)
+  const seed = seedFromDate(date)
   const [run, setRun] = useState<SimRun | null>(null)
   const [whatif, setWhatif] = useState<WhatIf | null>(null)
   const [mode, setMode] = useState<Mode>('live')
@@ -67,9 +73,9 @@ export default function TwinPage() {
   useEffect(() => { load<SimMeta>('/api/sim/meta', '/bundles/meta.json').then((r) => setMeta(r.data)) }, [])
   useEffect(() => {
     setRun(null); setWhatif(null); setFutures(null); useView.getState().setPlaying(false)
-    load<SimRun>(`/api/sim/run?scenario=${scenario}&seed=7`, `/bundles/run_${scenario}.json`).then((r) => { setRun(r.data); setMode(r.mode) })
+    load<SimRun>(`/api/sim/run?scenario=${scenario}&seed=${seed}`, `/bundles/run_${scenario}.json`).then((r) => { setRun(r.data); setMode(r.mode) })
     load<WhatIf>(`/api/sim/whatif?scenario=${scenario}&reps=20`, `/bundles/whatif_${scenario}.json`, 15000).then((r) => setWhatif(r.data))
-  }, [scenario])
+  }, [scenario, seed])
 
   if (!meta) return <div className="text-sm text-slate-500">Загрузка…</div>
   const name = Object.fromEntries(meta.stations.map((s) => [s.id, s.name]))
@@ -84,15 +90,16 @@ export default function TwinPage() {
           </button>
         ))}
         <button onClick={() => { setFutures('paint_service'); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
-          className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">◐ Два будущих рядом</button>
-        <span className="ml-auto flex items-center gap-2 text-xs text-slate-500">
-          <SourceBadge source="sim" /> 2 смены · {mode === 'live' ? 'сервер' : 'записанный прогон'}
+          className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"><Columns2 size={16} className="mr-1.5 inline -mt-0.5" />Два будущих рядом</button>
+        <span className="ml-auto flex items-center gap-3 text-xs text-slate-500">
+          <DatePicker value={date} onChange={setDate} />
+          <SourceBadge source="sim" />{mode === 'replay' && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">офлайн-режим</span>}
         </span>
       </div>
 
       {!run ? <div className="text-sm text-slate-500">Считаю симуляцию…</div> : (
         <>
-          {futures && <Futures scenario={scenario} action={futures} onClose={() => setFutures(null)} />}
+          {futures && <Futures scenario={scenario} action={futures} seed={seed} onClose={() => setFutures(null)} />}
           {!futures && <Card className="overflow-hidden">
             <div className="relative h-[60vh] min-h-[420px] bg-[#f4f5f7]">
               {view === '3d'
@@ -106,19 +113,12 @@ export default function TwinPage() {
                 ))}
               </div>
               {view === '3d' && <TourButton />}
-              <div className="absolute bottom-3 left-3 flex flex-wrap gap-3 rounded-xl bg-white/90 px-3 py-2 text-[11px] text-slate-600 shadow-sm ring-1 ring-slate-200 backdrop-blur">
-                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-green-500" />работает / поток идёт</span>
-                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-red-500" />стоит</span>
-                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-400" />некуда отдать</span>
-                <span className="flex items-center gap-1.5"><span className="text-amber-500">◆</span>узкое место</span>
-              </div>
+              <div className="absolute bottom-3 left-3 rounded-xl bg-white/90 px-3 py-2 shadow-sm ring-1 ring-slate-200 backdrop-blur"><StatusLegend /></div>
               <CauseBanner run={run} />
               <ZonePanel run={run} />
             </div>
             <div className="border-t border-slate-100 px-5 py-4"><Timeline run={run} /></div>
           </Card>}
-
-          <Dashboard run={run} />
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Tile label="Годных машин за смену" value={fmt(Math.round(run.kpi.good_per_shift))} unit={`/ ${run.kpi.plan_per_shift} план`}
@@ -127,31 +127,6 @@ export default function TwinPage() {
             <Tile label="Брак окраски" value={fmt(Math.round(run.kpi.defect_pct.paint * 10) / 10)} unit="%" note="норма 2%" tone={run.kpi.defect_pct.paint > 2 ? 'bad' : undefined} />
             <Tile label="OEE линии" value={fmt(Math.round(run.kpi.oee_pct))} unit="%" note="цель 85% · при допущенном цикле" tone={run.kpi.oee_pct < 85 ? 'warn' : undefined} />
           </div>
-
-          <Card className="p-5">
-            <div className="mb-4 flex items-baseline justify-between">
-              <h2 className="font-semibold">Что делает каждый участок</h2>
-              <div className="flex gap-3 text-xs text-slate-500">
-                {Object.entries(STATE_RU).map(([k, v]) => <span key={k} className="flex items-center gap-1.5"><span className={`h-2.5 w-2.5 rounded-sm ${STATE_COLOR[k]}`} />{v}</span>)}
-              </div>
-            </div>
-            <div className="space-y-3">
-              {meta.stations.map((s) => {
-                const sh = run.kpi.state_shares[s.id]
-                const isTop = run.bottleneck.top === s.id
-                return (
-                  <div key={s.id} className="flex items-center gap-3">
-                    <div className={`w-36 shrink-0 text-sm ${isTop ? 'font-semibold' : ''}`}>{s.name}{isTop && <span className="ml-1 text-amber-600">◆</span>}</div>
-                    <div className="flex h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
-                      {(['working', 'down', 'blocked', 'starved'] as const).map((k) => <div key={k} className={STATE_COLOR[k]} style={{ width: `${100 * sh[k]}%` }} title={`${STATE_RU[k]} ${Math.round(100 * sh[k])}%`} />)}
-                    </div>
-                    <div className="w-24 shrink-0 text-right text-xs tabular-nums text-slate-500">стоит {Math.round(run.kpi.downtime_min[s.id] / 2)} мин/см</div>
-                  </div>
-                )
-              })}
-            </div>
-            <p className="mt-4 text-xs text-slate-500">◆ узкое место — найдено по активным периодам: участок, который дольше всех работает без перерыва и задерживает остальных.</p>
-          </Card>
 
           <div>
             <h2 className="mb-3 text-lg font-semibold">Что будет, если…</h2>
@@ -171,13 +146,38 @@ export default function TwinPage() {
                       {o.significant ? `точно в пределах ${fmt(Math.round(o.ci95[0] * 10) / 10)}…${fmt(Math.round(o.ci95[1] * 10) / 10)}` : 'эффект не подтверждён'}
                     </div>
                     <p className="mt-3 text-sm text-slate-600">{o.detail}</p>
-                    <button onClick={() => { setFutures(o.id); window.scrollTo({ top: 0, behavior: 'smooth' }) }} className="mt-3 text-xs font-semibold text-emerald-700 hover:text-emerald-900">◐ Показать два будущих →</button>
+                    <button onClick={() => { setFutures(o.id); window.scrollTo({ top: 0, behavior: 'smooth' }) }} className="mt-3 flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900"><Columns2 size={13} />Показать два будущих →</button>
                   </Card>
                 ))}
               </div>
             )}
             <p className="mt-3 text-xs text-slate-500">Сравнение на {whatif?.reps ?? 20} одинаковых прогонах симуляции — это оценка на модели, а не гарантия на заводе.</p>
           </div>
+
+          <Dashboard run={run} />
+
+          <Card className="p-5">
+            <div className="mb-4 flex items-baseline justify-between">
+              <h2 className="font-semibold">Что делает каждый участок</h2>
+              <StatusLegend bottleneck={false} />
+            </div>
+            <div className="space-y-3">
+              {meta.stations.map((s) => {
+                const sh = run.kpi.state_shares[s.id]
+                const isTop = run.bottleneck.top === s.id
+                return (
+                  <div key={s.id} className="flex items-center gap-3">
+                    <div className={`w-36 shrink-0 text-sm ${isTop ? 'font-semibold' : ''}`}>{s.name}{isTop && <span className="ml-1.5 inline-block align-middle"><BottleneckBadge size={10} /></span>}</div>
+                    <div className="flex h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
+                      {(['working', 'down', 'blocked', 'starved'] as const).map((k) => <div key={k} style={{ width: `${100 * sh[k]}%`, background: STATUS[k].hex }} title={`${STATUS[k].label} ${Math.round(100 * sh[k])}%`} />)}
+                    </div>
+                    <div className="w-24 shrink-0 text-right text-xs tabular-nums text-slate-500">стоит {Math.round(run.kpi.downtime_min[s.id] / 2)} мин/см</div>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="mt-4 flex items-center gap-1.5 text-xs text-slate-500"><BottleneckBadge size={10} /> узкое место — участок, который дольше всех работает без перерыва и задерживает остальных.</p>
+          </Card>
 
           <details className="group">
             <summary className="cursor-pointer list-none text-sm font-medium text-slate-500 hover:text-slate-800">

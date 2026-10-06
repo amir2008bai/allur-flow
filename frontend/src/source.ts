@@ -40,6 +40,7 @@ export interface SimRun {
   bottleneck: { sole: Record<string, number>; shifting: Record<string, number>; top: string; timeline: { t: number; station: string | null }[] }
   stops: { t: number; station: string; minutes: number; planned: boolean; reason: string }[]
   frames: { t: number; states: Record<string, string>; buffers: Record<string, number>; good: number }[]
+  alerts?: { t: number; title: string; text: string }[]
 }
 
 export interface WhatIf {

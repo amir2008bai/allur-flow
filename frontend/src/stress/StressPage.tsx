@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
+import { PackageX, PlugZap, Target, Unlink, Users, Wind, Zap, type LucideIcon } from 'lucide-react'
 import ErrorBoundary from '../ErrorBoundary'
 import type { SimRun } from '../source'
 import Plan2D from '../twin/Plan2D'
@@ -20,7 +21,11 @@ interface StressRun extends SimRun {
 }
 interface DataResult { id: string; name: string; issues: { type: string; text: string }[]; count: number }
 
-const ICON: Record<string, string> = { micro_stops: '⚡', conveyor_break: '⛓', filter_clog: '🌫', parts_shortage: '📦', quality_burst: '🎯', shift_change: '👷', power_outage: '🔌' }
+const ICON: Record<string, LucideIcon> = { micro_stops: Zap, conveyor_break: Unlink, filter_clog: Wind, parts_shortage: PackageX, quality_burst: Target, shift_change: Users, power_outage: PlugZap }
+function FaultIcon({ id, size = 22 }: { id: string; size?: number }) {
+  const I = ICON[id] ?? Zap
+  return <span className="grid h-10 w-10 place-items-center rounded-xl bg-red-50 text-red-600 ring-1 ring-red-100"><I size={size} strokeWidth={2} /></span>
+}
 
 export default function StressPage() {
   const [list, setList] = useState<{ process: Scenario[]; data: { id: string; name: string }[] } | null>(null)
@@ -70,7 +75,7 @@ export default function StressPage() {
         {list.process.map((s) => (
           <button key={s.id} disabled={!!busy} onClick={() => start(s)}
             className={`rounded-2xl bg-white p-4 text-left shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 ${run?.fault.id === s.id ? 'ring-2 ring-slate-900' : 'ring-slate-200'}`}>
-            <div className="text-2xl">{ICON[s.id]}</div>
+            <FaultIcon id={s.id} />
             <div className="mt-2 text-sm font-semibold leading-tight">{s.name}</div>
             <div className="mt-1 line-clamp-2 text-xs text-slate-500">{s.detail}</div>
             <div className="mt-3 text-xs font-medium text-red-600">{busy === s.id ? 'Запускаю…' : 'Устроить сбой →'}</div>
@@ -82,7 +87,7 @@ export default function StressPage() {
         <Card className="scroll-mt-20 overflow-hidden">
           <div id="stress-viewer" />
           <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-3">
-            <span className="text-xl">{ICON[run.fault.id]}</span>
+            <FaultIcon id={run.fault.id} size={20} />
             <div className="min-w-0 flex-1">
               <div className="font-semibold">{run.fault.name}</div>
               <div className="text-xs text-slate-500">сбой с {clock(run.fault.window[0])} · прогон №{run.seed - 100}</div>

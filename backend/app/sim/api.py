@@ -48,7 +48,13 @@ def run_payload(scenario: str, seed: int) -> dict:
         "stops": stops,
         "defects": [e for e in run.events if e["type"] in ("defect", "scrap")],
         "frames": run.frames,
+        "alerts": _alerts(run),
     }
+
+
+def _alerts(run) -> list[dict]:
+    from ..learn.alerts import BUCKET_RU, bucket, detect_run
+    return [{"t": a.t, "title": BUCKET_RU.get(bucket(a), a.title), "text": a.text} for a in detect_run(run)]
 
 
 @router.get("/meta")

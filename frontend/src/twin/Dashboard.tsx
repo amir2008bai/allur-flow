@@ -1,15 +1,24 @@
 import ReactECharts from 'echarts-for-react'
-import { useMemo } from 'react'
+import { BellRing, OctagonAlert } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import type { SimRun } from '../source'
 import { Card } from '../ui'
 import { ZONE_BY_STATION } from './layout'
 import { useView } from './store'
 import { clock } from './Timeline'
+import { stamp } from '../dates'
 
 // Панель руководителя: выпуск против плана по ходу смены + журнал остановок.
 export default function Dashboard({ run }: { run: SimRun }) {
   const t = useView((s) => s.t)
   const setT = useView((s) => s.setT)
+  const date = useView((s) => s.date)
+  const [filter, setFilter] = useState<'all' | 'stops' | 'alerts'>('all')
+  const events = useMemo(() => {
+    const stops = run.stops.map((s) => ({ kind: 'stop' as const, t: s.t, title: `${ZONE_BY_STATION[s.station]?.name}: ${s.planned ? 'плановая остановка' : 'остановка'}`, text: s.reason, minutes: s.minutes, zone: ZONE_BY_STATION[s.station]?.id }))
+    const alerts = (run.alerts ?? []).map((a) => ({ kind: 'alert' as const, t: a.t, title: a.title, text: a.text, minutes: null as number | null, zone: undefined }))
+    return [...(filter !== 'alerts' ? stops : []), ...(filter !== 'stops' ? alerts : [])].sort((a, b) => a.t - b.t)
+  }, [run, filter])
   const option = useMemo(() => {
     const xs = run.frames.filter((_, i) => i % 5 === 0)
     const planPerMin = 120 / 480
@@ -43,20 +52,27 @@ export default function Dashboard({ run }: { run: SimRun }) {
         </div>
         <ReactECharts option={option} style={{ height: 220 }} notMerge onEvents={{ click: (p: { value?: [number, number] }) => p.value && setT(p.value[0]) }} />
       </Card>
-      <Card className="p-5">
-        <h2 className="font-semibold">Журнал остановок</h2>
-        <ul className="mt-3 space-y-2">
-          {run.stops.length === 0 && <li className="text-sm text-slate-400">остановок не было</li>}
-          {run.stops.map((s, i) => (
+      <Card className="flex max-h-[340px] flex-col p-5">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-semibold">Журнал событий</h2>
+          <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs">
+            {(['all', 'stops', 'alerts'] as const).map((k) => (
+              <button key={k} onClick={() => setFilter(k)} className={`rounded-md px-2 py-1 ${filter === k ? 'bg-white font-medium shadow-sm' : 'text-slate-500'}`}>{k === 'all' ? 'Все' : k === 'stops' ? 'Остановки' : 'Тревоги'}</button>
+            ))}
+          </div>
+        </div>
+        <ul className="mt-3 flex-1 space-y-1 overflow-y-auto pr-1">
+          {events.length === 0 && <li className="text-sm text-slate-400">событий нет</li>}
+          {events.map((e, i) => (
             <li key={i}>
-              <button onClick={() => { setT(s.t); useView.getState().select(ZONE_BY_STATION[s.station]?.id ?? null) }}
-                className={`flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-slate-50 ${s.t <= t ? '' : 'opacity-40'}`}>
-                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${s.planned ? 'bg-sky-400' : 'bg-red-500'}`} />
-                <span className="flex-1 text-sm">
-                  <span className="font-medium">{clock(s.t)} · {ZONE_BY_STATION[s.station]?.name}</span>
-                  <span className="block text-xs text-slate-500">{s.reason}</span>
+              <button onClick={() => { setT(e.t); if (e.zone) useView.getState().select(e.zone) }}
+                className={`flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-slate-50 ${e.t <= t ? '' : 'opacity-40'}`}>
+                {e.kind === 'stop' ? <OctagonAlert size={15} className="mt-0.5 shrink-0 text-red-500" /> : <BellRing size={15} className="mt-0.5 shrink-0 text-amber-500" />}
+                <span className="min-w-0 flex-1 text-sm">
+                  <span className="font-medium">{e.title}</span>
+                  <span className="block truncate text-xs text-slate-500">{stamp(date, e.t)} · {e.text}</span>
                 </span>
-                <span className="shrink-0 text-sm tabular-nums">{Math.round(s.minutes)} мин</span>
+                {e.minutes != null && <span className="shrink-0 text-sm tabular-nums">{Math.round(e.minutes)} мин</span>}
               </button>
             </li>
           ))}

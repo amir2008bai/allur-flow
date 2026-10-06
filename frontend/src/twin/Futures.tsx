@@ -13,20 +13,20 @@ const plural = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'машину' :
 interface FuturesPayload { action: { id: string; name: string; detail: string }; do_nothing: SimRun; intervene: SimRun }
 
 /** «Два будущих рядом»: одна и та же смена — без вмешательства и с ним. Одинаковые случайности, общий таймлайн. */
-export default function Futures({ scenario, action, onClose }: { scenario: string; action: string; onClose: () => void }) {
+export default function Futures({ scenario, action, seed = 7, onClose }: { scenario: string; action: string; seed?: number; onClose: () => void }) {
   const [f, setF] = useState<FuturesPayload | null>(null)
   const [view, setView] = useState<'3d' | 'plan'>('plan')
   const t = useView((v) => v.t)
 
   useEffect(() => {
     setF(null)
-    fetch(`/api/sim/futures?scenario=${scenario}&action=${action}&seed=7`).then((r) => r.json()).then((d: FuturesPayload) => {
+    fetch(`/api/sim/futures?scenario=${scenario}&action=${action}&seed=${seed}`).then((r) => r.json()).then((d: FuturesPayload) => {
       setF(d)
       const v = useView.getState()
       v.setPlaying(false); v.setT(0); v.select(null); v.setSpeed(60)
       setTimeout(() => useView.getState().setPlaying(true), 500)
     })
-  }, [scenario, action])
+  }, [scenario, action, seed])
 
   if (!f) return <Card className="grid h-64 place-items-center text-sm text-slate-500">Считаю два будущих…</Card>
   const i = Math.min(Math.floor(t), f.do_nothing.frames.length - 1)

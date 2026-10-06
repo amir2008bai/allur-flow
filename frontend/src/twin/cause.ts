@@ -56,7 +56,7 @@ export function causeChain(frame: Frame | undefined, run: SimRun, t: number): Ca
 }
 
 export const ZONE_POS = Object.fromEntries(ZONES.map((z) => [z.id, z])) as Record<ZoneId, (typeof ZONES)[number]>
-export const ROLE_HEX: Record<Role, string> = { cause: '#ef4444', effect: '#f59e0b', result: '#7c3aed' }
+export const ROLE_HEX: Record<Role, string> = { cause: '#ef4444', effect: '#f59e0b', result: '#0f172a' }
 
 // ── Устойчивые инциденты: без мелькания на любой скорости ─────────────────────
 export interface Incident { start: number; end: number; steps: CauseStep[]; key: string }
