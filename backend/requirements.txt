@@ -8,3 +8,5 @@ river==0.26.1
 scipy==1.18.1
 simpy==4.1.2
 uvicorn==0.54.0
+openpyxl==3.1.5
+python-multipart==0.0.32

@@ -29,7 +29,12 @@ class Obs:
     at: float = field(default_factory=time.time)
 
 
-DOCX_OBS = [Obs(115, 4, "fact", "docx:01.10:табл.4:стр.2"), Obs(116, 6, "fact", "docx:02.10:табл.4:стр.5")]
+def _start_obs() -> list[Obs]:
+    """Старт — строки брака окраски из активного набора данных (тестовый ТЗ или реальный файл)."""
+    from ..dataset import active_facts
+    f = active_facts()
+    return [Obs(q.produced, q.defects, "fact", f"{f.source_file}:табл.{q.provenance.table}:стр.{q.provenance.row}")
+            for q in f.quality if q.area == "paint"]
 
 
 def posterior(obs: list[Obs]) -> dict:
@@ -55,9 +60,10 @@ class Calibrator:
 
     def reset(self) -> None:
         self.camera_seen = self.camera_defects = self._pending = 0
-        self.obs: list[Obs] = list(DOCX_OBS)
+        self.start = _start_obs()
+        self.obs: list[Obs] = list(self.start)
         self.history: list[dict] = []
-        self._snapshot("старт: данные ТЗ")
+        self._snapshot("старт: данные завода")
 
     def _snapshot(self, trigger: str) -> None:
         post = posterior(self.obs)
@@ -84,7 +90,7 @@ class Calibrator:
             self._snapshot(f"камера: {self.camera_seen} кузовов, {self.camera_defects} с дефектом")
 
     def undo(self) -> dict:
-        if len(self.obs) > len(DOCX_OBS):
+        if len(self.obs) > len(self.start):
             self.obs.pop()
             self._snapshot("откат последнего ввода")
         return self.state()

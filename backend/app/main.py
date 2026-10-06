@@ -6,12 +6,13 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from .findings import all_findings
-from .ingest_docx import load_facts
+from .dataset import active_facts
 from .schemas import Facts, Finding
 from .copilot.api import router as copilot_router
 from .learn.api import router as learn_router
 from .sim.api import router as sim_router
 from .stress_api import router as stress_router
+from .data_api import router as data_router
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "raw" / "test_data.docx"
 
@@ -20,11 +21,12 @@ app.include_router(sim_router)
 app.include_router(learn_router)
 app.include_router(copilot_router)
 app.include_router(stress_router)
+app.include_router(data_router)
 
 
 @lru_cache
 def facts() -> Facts:
-    return load_facts(DATA)
+    return active_facts()
 
 
 @app.get("/api/health")

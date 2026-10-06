@@ -31,7 +31,7 @@ def simplify(items: list[Finding], facts: Facts) -> list[Finding]:
             else:
                 f.title, f.plain = f"{name}: брак в норме", "Проблемы нет."
         elif f.id == "plan.gap":
-            gap = _metric(f, "Разрыв")
+            gap = _metric(f, "Разрыв") or 0
             f.title, f.key, f.key_note = "План не сходится с целью", f"−{gap}", "машин в плане"
             f.plain = f"По моделям запланировано {sum(m.monthly_plan for m in facts.model_plan)}, а цель — {facts.targets.monthly_output_min}."
         elif f.id == "oee.not_computable":
@@ -53,27 +53,36 @@ def simplify(items: list[Finding], facts: Facts) -> list[Finding]:
         elif f.id == "utilization.definition":
             f.title, f.plain = "«Загрузка» = часы работы ÷ 8", "Это не OEE и не выполнение плана."
         elif f.id == "period.row_is_shift":
-            f.title, f.plain = "Одна строка таблицы = одна смена", "120 × 2 смены × 20 дней = 4800 — совпадает с планом."
+            f.title, f.plain = "Одна строка таблицы = одна смена", f.summary
         elif f.id == "paint.filter_hypothesis":
-            f.title, f.plain = "Фильтр и брак — пока совпадение", "Фильтр меняли 01.10, брак высокий оба дня. Причина не доказана."
+            d = next(x for x in facts.downtime if x.area == "paint")
+            f.title = f"«{d.reason}» и брак — пока совпадение"
+            f.plain = f"{d.equipment}, {d.date:%d.%m}: совпадает по времени с браком окраски. Причина не доказана."
         elif f.id == "plan.attainment":
             vals = [m.value for m in f.metrics]
             worst = min(f.metrics, key=lambda m: m.value)
             f.title, f.key, f.key_note = "Выполнение плана по сменам", f"{_n(min(vals), 0)}–{_n(max(vals), 0)}%", "от плана"
             f.plain = f"Хуже всего — {worst.label}: {_n(worst.value)}%."
-    items.append(_downtime_mismatch(facts))
+    mm = _downtime_mismatch(facts)
+    if mm and mm.key.split(" ≠ ")[0] != mm.key.split(" ≠ ")[1]:  # показываем, только если журналы реально расходятся
+        items.append(mm)
     return items
 
 
-def _downtime_mismatch(facts: Facts) -> Finding:
-    conv = next(d for d in facts.downtime if d.equipment == "Конвейер-03")
-    line = next(l for l in facts.lines if l.date == conv.date and l.area == conv.area)
+def _downtime_mismatch(facts: Facts) -> Finding | None:
+    cand = [d for d in facts.downtime if not d.planned] or list(facts.downtime)
+    if not cand:
+        return None
+    conv = max(cand, key=lambda d: d.minutes)
+    line = next((l for l in facts.lines if l.date == conv.date and l.area == conv.area), None)
+    if line is None:
+        return None
     lost = round((facts.targets.shift_hours - line.runtime_h) * 60)
     return Finding(
         id="downtime.mismatch", severity="info",
         title="Журнал простоев не сходится",
         key=f"{conv.minutes} ≠ {lost}", key_note="мин",
-        plain=f"Конвейер-03 стоял {conv.minutes} мин, а сборка потеряла всего {lost} мин. Учёт ведётся по-разному.",
+        plain=f"{conv.equipment} стоял {conv.minutes} мин, а участок потерял {lost} мин времени работы. Учёт ведётся по-разному.",
         summary="Время простоя оборудования и недоработка линии от 8 ч не совпадают ни в одной из 4 записей. Простой актива и время работы линии — разные уровни учёта.",
         caveat="Нужны точное время начала/конца остановок и признак критичности оборудования.",
         provenance=[conv.provenance, line.provenance],

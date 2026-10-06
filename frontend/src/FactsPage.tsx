@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { AreaId, Facts, Finding, Severity } from './types'
 import { Card, SEVERITY, SourceBadge, fmt } from './ui'
+import DataSource from './DataSource'
 
 const SEV_RANK: Record<Severity, number> = { critical: 0, warn: 1, info: 2, ok: 3 }
 
@@ -57,7 +58,7 @@ function Details({ f }: { f: Finding }) {
       )}
       {f.caveat && <p>⚠ {f.caveat}</p>}
       {f.provenance.length > 0 && (
-        <p>Источник: Word-файл ТЗ, {[...new Set(f.provenance.map((p) => `табл. ${p.table} стр. ${p.row}`))].join('; ')}</p>
+        <p>Источник: {f.provenance[0].file}, {[...new Set(f.provenance.map((p) => `табл. ${p.table} стр. ${p.row}`))].join('; ')}</p>
       )}
     </div>
   )
@@ -144,6 +145,7 @@ export default function FactsPage({ facts, findings }: { facts: Facts; findings:
 
   return (
     <div className="space-y-6">
+      <DataSource />
       <Route facts={facts} findings={findings} selected={area} onSelect={setArea} />
 
       {problems.length > 0 && (

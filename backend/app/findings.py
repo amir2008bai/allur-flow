@@ -197,10 +197,11 @@ def period_assumption(f: Facts) -> Finding:
 
 
 def filter_hypothesis(f: Facts) -> Finding:
+    d = next(x for x in f.downtime if x.area == "paint")
     return Finding(
         id="paint.filter_hypothesis", area="paint", severity="info",
-        title="Замена фильтра и брак окраски — гипотеза, не причина",
-        summary="Фильтр Камеры-02 меняли 01.10, брак окраски выше нормы и 01.10, и 02.10. Это совпадение по времени, которое стоит проверить, а не доказанная связь.",
+        title="Простой окраски и брак — гипотеза, не причина",
+        summary=f"{d.equipment}: «{d.reason}» {d.date:%d.%m}. Совпадение по времени с браком окраски стоит проверить — это не доказанная связь.",
         caveat="Для проверки нужны: классы дефектов, время замены, брак до замены фильтра.",
         provenance=[d.provenance for d in f.downtime if d.area == "paint"],
     )
@@ -222,6 +223,11 @@ SEV_ORDER = {"critical": 0, "warn": 1, "info": 2, "ok": 3}
 
 def all_findings(f: Facts) -> list[Finding]:
     from .plain import simplify
-    items = [*quality_findings(f), plan_gap(f), oee_status(f), *downtime_findings(f), flow_balance(f),
-             rty(f), utilization_check(f), period_assumption(f), filter_hypothesis(f), plan_attainment(f)]
+    items = [*quality_findings(f), oee_status(f), *downtime_findings(f), rty(f), utilization_check(f), plan_attainment(f)]
+    if f.model_plan:
+        items += [plan_gap(f), period_assumption(f)]
+    if {"welding", "paint", "assembly"} <= {q.area for q in f.quality}:
+        items.append(flow_balance(f))
+    if any(d.area == "paint" for d in f.downtime) and any(q.area == "paint" for q in f.quality):
+        items.append(filter_hypothesis(f))
     return sorted(simplify(items, f), key=lambda x: SEV_ORDER[x.severity])
