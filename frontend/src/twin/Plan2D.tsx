@@ -1,7 +1,8 @@
 import type { SimRun } from '../source'
 import { BUFFERS, LINKS, LINK_RU, STATE_HEX, STATE_RU, STATUS_HEX, ZONES, ZONE_BY_STATION, linkStatus, type StationState, type Zone } from './layout'
 import { useView } from './store'
-import { ROLE_HEX, causeChain } from './cause'
+import { ROLE_HEX } from './cause'
+import { useCause } from './useCause'
 import { causeLinks } from './CauseFx'
 
 // Вид сверху в стиле чертежа. Единицы SVG — метры, та же раскладка, что и в 3D.
@@ -30,7 +31,7 @@ export default function Plan2D({ run }: { run: SimRun }) {
   const frame = run.frames[Math.min(Math.floor(t), run.frames.length - 1)]
   const bnStation = run.bottleneck.timeline[Math.min(Math.floor(t / 10), run.bottleneck.timeline.length - 1)]?.station
   const bnZone = bnStation ? ZONE_BY_STATION[bnStation]?.id : undefined
-  const steps = causeChain(frame, run, t)
+  const steps = useCause(run)?.steps ?? []
 
   return (
     <svg viewBox="-42 -13 97 23" className="h-full w-full select-none" preserveAspectRatio="xMidYMid meet" onClick={() => select(null)}>

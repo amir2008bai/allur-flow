@@ -6,7 +6,7 @@ import * as THREE from 'three'
 import type { SimRun } from '../source'
 import { BUFFERS, LINKS, STATE_HEX, STATE_RU, STATUS_HEX, ZONES, ZONE_BY_ID, ZONE_BY_STATION, linkStatus, type Link, type LinkStatus, type StationState, type Zone, type ZoneId } from './layout'
 import { useView } from './store'
-import { causeChain } from './cause'
+import { useCause } from './useCause'
 import { CauseBadges, CauseFx3D, CauseProjector } from './CauseFx'
 
 type Frame = SimRun['frames'][number]
@@ -334,7 +334,8 @@ export default function Scene3D({ run, quality = 'high' }: { run: SimRun; qualit
   const caps = run.buffer_cap
   const labelRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const causeRefs = useRef<Record<string, HTMLDivElement | null>>({})
-  const steps = useMemo(() => causeChain(frame, run, t), [frame, run, t])
+  const incident = useCause(run)
+  const steps = incident?.steps ?? []
 
   return (
     <div className="relative h-full w-full overflow-hidden">

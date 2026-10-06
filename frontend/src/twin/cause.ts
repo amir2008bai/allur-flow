@@ -57,3 +57,41 @@ export function causeChain(frame: Frame | undefined, run: SimRun, t: number): Ca
 
 export const ZONE_POS = Object.fromEntries(ZONES.map((z) => [z.id, z])) as Record<ZoneId, (typeof ZONES)[number]>
 export const ROLE_HEX: Record<Role, string> = { cause: '#ef4444', effect: '#f59e0b', result: '#7c3aed' }
+
+// ── Устойчивые инциденты: без мелькания на любой скорости ─────────────────────
+export interface Incident { start: number; end: number; steps: CauseStep[]; key: string }
+const MIN_MINUTES = 8      // короче — не инцидент, а шум
+const MERGE_GAP = 5        // разрывы короче склеиваем
+const cache = new WeakMap<SimRun, Incident[]>()
+
+/** Короткие подписи для строки: 2–3 слова на шаг. */
+export function shortText(s: CauseStep): string {
+  if (s.role === 'result') return s.text.startsWith('годные') ? 'выпуск стоит' : 'выпуск падает'
+  if (s.role === 'cause') return s.text.startsWith('стоит') ? 'стоит' : 'тормозит'
+  return s.text.startsWith('ждёт') ? 'ждёт кузов' : 'некуда отдать'
+}
+
+export function incidents(run: SimRun): Incident[] {
+  const hit = cache.get(run)
+  if (hit) return hit
+  const raw: { t: number; root: string | null; steps: CauseStep[] }[] = []
+  for (const f of run.frames) {
+    const steps = causeChain(f, run, f.t)
+    raw.push({ t: f.t, root: steps[0]?.zone ?? null, steps })
+  }
+  const segs: Incident[] = []
+  let cur: Incident | null = null
+  for (const r of raw) {
+    if (r.root && cur && cur.key === r.root && r.t - cur.end <= MERGE_GAP) {
+      cur.end = r.t
+      if (r.steps.length > cur.steps.length) cur.steps = r.steps   // берём самую полную цепочку эпизода
+    } else if (r.root) {
+      if (cur) segs.push(cur)
+      cur = { start: r.t, end: r.t, steps: r.steps, key: r.root }
+    }
+  }
+  if (cur) segs.push(cur)
+  const out = segs.filter((s) => s.end - s.start >= MIN_MINUTES)
+  cache.set(run, out)
+  return out
+}
