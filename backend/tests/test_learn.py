@@ -78,3 +78,17 @@ def test_learn_api():
     st = c.post("/api/learn/alerts/vote", json={"alert_id": card["id"], "verdict": "reject"}).json()
     assert st["human_votes"] >= 1
     assert c.post("/api/learn/calib", json={"produced": 100, "defects": 200}).status_code == 422
+
+
+def test_camera_events_update_calibration():
+    c = TestClient(app)
+    c.post("/api/learn/reset")
+    m0 = c.get("/api/learn/calib").json()["current"]["mean"]
+    for i in range(20):
+        r = c.post("/api/learn/camera/event", json={"event_type": "paint_defect" if i < 5 else "paint_ok", "body_id": f"T{i}"})
+        assert r.status_code == 200
+    st = c.get("/api/learn/camera").json()
+    assert st["seen"] == 20 and st["defects"] == 5
+    assert st["calib"]["current"]["mean"] > m0          # 25% брака от камеры → оценка выросла
+    assert c.post("/api/learn/camera/event", json={"event_type": "что-то"}).status_code == 422
+    c.post("/api/learn/reset")

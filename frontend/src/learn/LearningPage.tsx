@@ -3,7 +3,7 @@ import QRCode from 'qrcode'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { clock } from '../twin/Timeline'
 import { Card, SourceBadge } from '../ui'
-import { api, pct, type AlertsState, type CalibState, type ForecastPayload } from './api'
+import { api, pct, type AlertsState, type CalibState, type CameraLog, type ForecastPayload } from './api'
 
 const AX = { color: '#94a3b8', fontSize: 10 }
 const num = (x: number, d = 1) => x.toFixed(d).replace('.', ',')
@@ -186,7 +186,13 @@ function CalibBlock() {
   const [produced, setProduced] = useState(118)
   const [defects, setDefects] = useState(6)
   const [busy, setBusy] = useState(false)
-  useEffect(() => { api.calib().then(setSt).catch(() => {}) }, [])
+  const [log, setLog] = useState<CameraLog[]>([])
+  const [streaming, setStreaming] = useState(false)
+  useEffect(() => { api.calib().then(setSt).catch(() => {}); api.camera().then((c) => setLog(c.log)).catch(() => {}) }, [])
+  const runCamera = async () => {
+    setStreaming(true)
+    try { for (let i = 0; i < 3; i++) { const c = await api.cameraDemo(20); setLog(c.log); setSt(c.calib) } } finally { setStreaming(false) }
+  }
   if (!st) return <Card className="p-6 text-sm text-slate-500">Загрузка…</Card>
   const c = st.current
   const pos = (x: number) => `${Math.min(100, (x / 0.1) * 100)}%`
@@ -227,7 +233,20 @@ function CalibBlock() {
           </div>
         </div>
       </div>
+      {/* Камера контроля ЛКП: двойник учится сам, без человека */}
+      <div className="mt-5 flex flex-wrap items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100">
+        <span className={`grid h-9 w-9 place-items-center rounded-full ${streaming ? 'animate-pulse bg-red-100' : 'bg-white ring-1 ring-slate-200'}`} aria-hidden>📷</span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold">Камера контроля окраски</div>
+          <div className="text-xs text-slate-500">{st.camera.seen ? `проверено ${st.camera.seen} кузовов · ${st.camera.defects} с дефектом · двойник учится сам` : 'каждый кузов с камеры сразу уточняет брак'}</div>
+        </div>
+        <div className="flex gap-1">
+          {log.slice(0, 16).reverse().map((e, i) => <span key={i} title={e.defect ? `${e.body_id}: ${e.defect_class}` : `${e.body_id}: без дефекта`} className={`h-5 w-1.5 rounded-sm ${e.defect ? 'bg-red-500' : 'bg-emerald-400'}`} />)}
+        </div>
+        <button disabled={streaming} onClick={runCamera} className="rounded-xl bg-white px-3 py-2 text-xs font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100 disabled:opacity-50">{streaming ? 'Идёт поток…' : '▶ Поток камеры (демо)'}</button>
+      </div>
       <More>
+        <p>Камера: принимаем события любой камеры контроля ЛКП в открытом формате (POST /api/learn/camera/event). Идея — из кейса Allur Challenge 2025 (распознавание дефектов окраски по фото): камера находит дефект, двойник считает, во что он обходится. С их решением мы не интегрированы — совместимы по формату. Демо-поток — симуляция.</p>
         <p>Старт — 2 дня брака окраски из ТЗ (10 дефектов на 231). Каждый ввод добавляется к данным: оценка уточняется, «вилка» сужается, двойник пересчитывает выпуск.</p>
         <p>Вероятность, что брак выше нормы 2%: {c.p_above_norm > 0.99 ? 'больше 99%' : pct(c.p_above_norm)}.</p>
         <ul className="mt-1 space-y-0.5">{st.history.slice(-5).reverse().map((h) => <li key={h.version}>v{h.version} · {h.trigger} → {pct(h.mean, 1)}</li>)}</ul>

@@ -16,7 +16,9 @@ export interface ForecastPayload {
   multi_seed: { seeds: number; mae_after_drift: Record<string, number>; beats_frozen: number; beats_naive: number; gain_vs_frozen: number; gain_vs_naive: number }
 }
 export interface CalibVersion { version: number; trigger: string; mean: number; lo90: number; hi90: number; p_above_norm: number; n: number; defects: number; forecast: { good_per_shift: number; lo: number; hi: number } }
-export interface CalibState { norm: number; current: CalibVersion; history: CalibVersion[]; observations: { produced: number; defects: number; source: string; who: string }[] }
+export interface CameraLog { ts: number; defect: boolean; defect_class: string | null; body_id: string | null; source: string }
+export interface CameraState { seen: number; defects: number; log: CameraLog[]; calib: CalibState }
+export interface CalibState { norm: number; camera: { seen: number; defects: number }; current: CalibVersion; history: CalibVersion[]; observations: { produced: number; defects: number; source: string; who: string }[] }
 
 const j = (r: Response) => { if (!r.ok) throw new Error(String(r.status)); return r.json() }
 const post = (url: string, body?: unknown) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }).then(j)
@@ -30,6 +32,8 @@ export const api = {
   calib: (): Promise<CalibState> => fetch('/api/learn/calib').then(j),
   calibAdd: (produced: number, defects: number, who: string): Promise<CalibState> => post('/api/learn/calib', { produced, defects, who }),
   calibUndo: (): Promise<CalibState> => post('/api/learn/calib/undo'),
+  camera: (): Promise<CameraState> => fetch('/api/learn/camera').then(j),
+  cameraDemo: (n = 20): Promise<CameraState> => post(`/api/learn/camera/demo?n=${n}`),
   reset: () => post('/api/learn/reset'),
 }
 

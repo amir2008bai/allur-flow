@@ -54,6 +54,7 @@ class Calibrator:
         self.reset()
 
     def reset(self) -> None:
+        self.camera_seen = self.camera_defects = self._pending = 0
         self.obs: list[Obs] = list(DOCX_OBS)
         self.history: list[dict] = []
         self._snapshot("старт: данные ТЗ")
@@ -70,6 +71,18 @@ class Calibrator:
         self._snapshot(f"ввод: {defects} из {produced}" + (f" ({who})" if who else ""))
         return self.state()
 
+    CAMERA_BATCH = 20  # пересчёт прогноза двойника — раз в 20 кузовов от камеры
+
+    def add_camera(self, defect: bool, source: str, provenance: str) -> None:
+        """Событие камеры контроля ЛКП: один кузов, дефект есть/нет. Двойник учится без участия человека."""
+        self.obs.append(Obs(1, int(defect), source, provenance, "камера ЛКП"))
+        self.camera_seen = getattr(self, "camera_seen", 0) + 1
+        self.camera_defects = getattr(self, "camera_defects", 0) + int(defect)
+        self._pending = getattr(self, "_pending", 0) + 1
+        if self._pending >= self.CAMERA_BATCH:
+            self._pending = 0
+            self._snapshot(f"камера: {self.camera_seen} кузовов, {self.camera_defects} с дефектом")
+
     def undo(self) -> dict:
         if len(self.obs) > len(DOCX_OBS):
             self.obs.pop()
@@ -77,5 +90,6 @@ class Calibrator:
         return self.state()
 
     def state(self) -> dict:
-        return {"source": "feedback", "norm": NORM, "current": self.history[-1], "history": self.history,
+        return {"source": "feedback", "norm": NORM,
+                "camera": {"seen": self.camera_seen, "defects": self.camera_defects}, "current": self.history[-1], "history": self.history,
                 "observations": [{"produced": o.produced, "defects": o.defects, "source": o.source, "provenance": o.provenance, "who": o.who} for o in self.obs]}
