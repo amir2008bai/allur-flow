@@ -6,7 +6,7 @@ import Plan2D from './twin/Plan2D'
 import CauseBanner from './twin/CauseBanner'
 import Futures from './twin/Futures'
 import Actions from './twin/Actions'
-import MoneyCalc from './twin/MoneyCalc'
+import ShiftBuilder, { parseCfg, toCfg } from './twin/ShiftBuilder'
 import { ZONES } from './twin/layout'
 import Timeline from './twin/Timeline'
 import ZonePanel from './twin/ZonePanel'
@@ -14,26 +14,13 @@ import { useView } from './twin/store'
 
 const Scene3D = lazy(() => import('./twin/Scene3D'))
 import { load, type Mode, type SimMeta, type SimRun, type WhatIf } from './source'
-import { Card, SourceBadge, fmt } from './ui'
+import { Card, SourceBadge } from './ui'
 
 import { BottleneckBadge, STATUS, StatusLegend } from './theme'
 import { Columns2, Orbit, Square } from 'lucide-react'
 import DatePicker from './DatePicker'
 import { seedFromDate } from './dates'
 const STATE_RU: Record<string, string> = { working: 'работает', starved: 'ждёт кузов', blocked: 'некуда отдать', down: 'стоит' }
-
-function Tile({ label, value, unit, note, tone }: { label: string; value: string; unit?: string; note: string; tone?: 'bad' | 'warn' }) {
-  return (
-    <Card className="p-5">
-      <div className="flex items-center gap-2 text-sm text-slate-500">
-        {tone && <span className={`h-2 w-2 rounded-full ${tone === 'bad' ? 'bg-red-500' : 'bg-amber-500'}`} />}
-        {label}
-      </div>
-      <div className="mt-1 flex items-baseline gap-1"><span className="text-4xl font-semibold tracking-tight">{value}</span>{unit && <span className="text-sm text-slate-500">{unit}</span>}</div>
-      <div className="mt-1 text-xs text-slate-500">{note}</div>
-    </Card>
-  )
-}
 
 function TourButton() {
   const touring = useView((v) => v.touring)
@@ -61,7 +48,6 @@ function TourButton() {
 export default function TwinPage() {
   const [meta, setMeta] = useState<SimMeta | null>(null)
   const scenario = useView((v) => v.scenario)
-  const setScenario = useView((v) => v.setScenario)
   const date = useView((v) => v.date)
   const setDate = useView((v) => v.setDate)
   const seed = seedFromDate(date)
@@ -74,31 +60,26 @@ export default function TwinPage() {
 
   useEffect(() => { load<SimMeta>('/api/sim/meta', '/bundles/meta.json').then((r) => setMeta(r.data)) }, [])
   useEffect(() => {
-    setRun(null); setWhatif(null); setFutures(null); useView.getState().setPlaying(false)
-    load<SimRun>(`/api/sim/run?scenario=${scenario}&seed=${seed}`, `/bundles/run_${scenario}.json`).then((r) => { setRun(r.data); setMode(r.mode) })
-    load<WhatIf>(`/api/sim/whatif?scenario=${scenario}&reps=20`, `/bundles/whatif_${scenario}.json`, 15000).then((r) => setWhatif(r.data))
-  }, [scenario, seed])
+    setRun(null); setFutures(null); useView.getState().setPlaying(false)
+    load<SimRun>(`/api/sim/run?scenario=${encodeURIComponent(scenario)}&seed=${seed}`, `/bundles/run_${scenario}.json`).then((r) => { setRun(r.data); setMode(r.mode) })
+      }, [scenario, seed])
+  const faultsOnly = toCfg(parseCfg(scenario).faults, [])
+  useEffect(() => {
+    setWhatif(null)
+    load<WhatIf>(`/api/sim/whatif?scenario=${encodeURIComponent(faultsOnly)}&reps=20`, `/bundles/whatif_${faultsOnly}.json`, 15000).then((r) => setWhatif(r.data))
+  }, [faultsOnly])
 
   if (!meta) return <div className="text-sm text-slate-500">Загрузка…</div>
   const name = Object.fromEntries(meta.stations.map((s) => [s.id, s.name]))
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
-        {meta.scenarios.map((s) => (
-          <button key={s.id} onClick={() => setScenario(s.id)}
-            className={`rounded-xl px-4 py-2 text-sm ring-1 transition ${scenario === s.id ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}>
-            {s.name}
-          </button>
-        ))}
-        {(scenario.startsWith('stress:') || scenario.startsWith('chaos:')) && (
-          <span className="flex items-center gap-1 rounded-xl bg-red-600 py-2 pl-4 pr-2 text-sm font-medium text-white">
-            {run?.scenario_name ?? 'Испытание'}
-            <button onClick={() => setScenario('base')} className="ml-1 rounded-lg px-1.5 hover:bg-red-700" aria-label="Закрыть испытание">✕</button>
-          </span>
-        )}
-        <button onClick={() => { setFutures((whatif?.useful?.[0]) ?? 'fast_repair'); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
-          className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"><Columns2 size={16} className="mr-1.5 inline -mt-0.5" />Два будущих рядом</button>
+      <ShiftBuilder />
+      <div id="twin-viewer" className="flex scroll-mt-20 flex-wrap items-center gap-2">
+        <h2 className="text-lg font-semibold">Как идёт смена на линии</h2>
+        <span className="text-sm text-slate-500">{run?.scenario_name ?? ''}</span>
+        <button onClick={() => { setFutures((whatif?.useful?.[0]) ?? 'fast_repair'); document.getElementById('twin-viewer')?.scrollIntoView({ behavior: 'smooth' }) }}
+          className="ml-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"><Columns2 size={16} className="mr-1.5 inline -mt-0.5" />Два будущих рядом</button>
         <span className="ml-auto flex items-center gap-3 text-xs text-slate-500">
           <DatePicker value={date} onChange={setDate} />
           <SourceBadge source="sim" />{mode === 'replay' && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">офлайн-режим</span>}
@@ -128,17 +109,7 @@ export default function TwinPage() {
             <div className="border-t border-slate-100 px-5 py-4"><Timeline run={run} /></div>
           </Card>}
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Tile label="Годных машин за смену" value={fmt(Math.round(run.kpi.good_per_shift))} unit={`/ ${run.kpi.plan_per_shift} план`}
-              note="считаем на выходе ОТК" tone={run.kpi.good_per_shift < run.kpi.plan_per_shift * 0.95 ? 'bad' : undefined} />
-            <Tile label="Главное узкое место" value={name[run.bottleneck.top]} note={`ограничивает поток ${Math.round(100 * (run.bottleneck.sole[run.bottleneck.top] + run.bottleneck.shifting[run.bottleneck.top]))}% времени`} tone="warn" />
-            <Tile label="Брак окраски" value={fmt(Math.round(run.kpi.defect_pct.paint * 10) / 10)} unit="%" note="норма 2%" tone={run.kpi.defect_pct.paint > 2 ? 'bad' : undefined} />
-            <Tile label="OEE линии" value={fmt(Math.round(run.kpi.oee_pct))} unit="%" note="цель 85% · при допущенном цикле" tone={run.kpi.oee_pct < 85 ? 'warn' : undefined} />
-          </div>
-
-          <Actions whatif={whatif} onFutures={(id) => { setFutures(id); window.scrollTo({ top: 0, behavior: 'smooth' }) }} />
-
-          <MoneyCalc whatif={whatif} />
+          <Actions whatif={whatif} onFutures={(id) => { setFutures(id); document.getElementById('twin-viewer')?.scrollIntoView({ behavior: 'smooth' }) }} />
 
           <Dashboard run={run} />
 

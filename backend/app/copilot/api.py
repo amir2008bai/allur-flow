@@ -11,7 +11,7 @@ class Ask(BaseModel):
     message: str = Field(min_length=1, max_length=500)
     history: list[dict] = []
     offline: bool = False
-    scenario: str = Field("paint_degradation", pattern="^(base|paint_degradation|conveyor_break|stress:[a-z_]+|chaos:[a-z_,]+)$")
+    scenario: str = Field("paint_degradation", pattern="^(base|paint_degradation|conveyor_break|stress:[a-z_]+|chaos:[a-z_,]+|cfg:[a-z_,]*\|[a-z_,]*)$")
     seed: int = 7
     view: dict = {}
 

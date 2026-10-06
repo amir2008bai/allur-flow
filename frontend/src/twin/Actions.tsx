@@ -1,8 +1,9 @@
-import { Box, ChevronDown, CircleCheck, Columns2, Factory, Sparkles, Target, Wallet } from 'lucide-react'
+import { Box, Check, ChevronDown, CircleCheck, Columns2, Factory, Plus, Sparkles, Target, Wallet } from 'lucide-react'
 import { useState } from 'react'
 import type { WhatIf } from '../source'
 import { effect, tenge, useMoney } from '../money'
 import { Card } from '../ui'
+import { parseCfg, toCfg } from './ShiftBuilder'
 import { useView } from './store'
 
 const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString('ru-RU')
@@ -12,6 +13,11 @@ export default function Actions({ whatif, onFutures }: { whatif: WhatIf | null; 
   const [more, setMore] = useState(false)
   const ask = useView((v) => v.ask)
   const money = useMoney()
+  const scenario = useView((v) => v.scenario)
+  const setScenario = useView((v) => v.setScenario)
+  const cfg = parseCfg(scenario)
+  const inSim = (id: string) => cfg.actions.includes(id)
+  const toggleSim = (ids: string[]) => { const all = ids.every(inSim); const acts = all ? cfg.actions.filter((a) => !ids.includes(a)) : [...new Set([...cfg.actions, ...ids])]; setScenario(toCfg(cfg.faults, acts)); window.scrollTo({ top: 0, behavior: 'smooth' }) }
   if (!whatif) return <div className="text-sm text-slate-500">Сравниваю 6 действий на 20 прогонах…</div>
   const useful = whatif.options.filter((o) => o.significant && o.delta_per_shift > 0)
   const rest = whatif.options.filter((o) => !(o.significant && o.delta_per_shift > 0))
@@ -50,6 +56,7 @@ export default function Actions({ whatif, onFutures }: { whatif: WhatIf | null; 
               <div className="text-xs text-slate-500">машин за смену{combo.money ? ` · ≈ ${tenge(effect(combo.delta_per_shift, combo.money, money, gap).netMonth)} в месяц` : ''}</div>
             </div>
             {combo.closes_gap && <span className="flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white"><CircleCheck size={14} />план выполнен</span>}
+            <button onClick={() => toggleSim(combo.ids)} className="flex items-center gap-1 rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700">{combo.ids.every(inSim) ? <><Check size={13} />В смене</> : <><Plus size={13} />Добавить в смену</>}</button>
           </div>
         </Card>
       )}
@@ -85,6 +92,7 @@ export default function Actions({ whatif, onFutures }: { whatif: WhatIf | null; 
                 {o.cost && <div className="flex items-center gap-1.5 text-xs text-slate-500"><Wallet size={12} />{o.cost}</div>}
               </div>
               <div className="mt-3 flex flex-wrap gap-3">
+                <button onClick={() => toggleSim([o.id])} className="flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-950">{inSim(o.id) ? <><Check size={13} />В смене</> : <><Plus size={13} />Добавить в смену</>}</button>
                 <button onClick={() => onFutures(o.id)} className="flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900"><Columns2 size={13} />Два будущих</button>
                 <button onClick={() => ask(`Почему «${o.name}» даёт +${n1(o.delta_per_shift)} машин за смену и как это внедрить на линии?`)} className="flex items-center gap-1 text-xs font-semibold text-violet-700 hover:text-violet-900"><Sparkles size={13} />Почему?</button>
               </div>

@@ -182,7 +182,7 @@ export default function StressPage() {
               <div className="mt-4 flex flex-col gap-2">
                 <button onClick={() => useView.getState().ask(`Что произошло в испытании (${s.faults.map((f) => f.name).join(', ')}) и что делать начальнику смены в первую очередь?`)}
                   className="flex items-center justify-center gap-1.5 rounded-xl bg-violet-50 px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100"><Sparkles size={15} />Спросить ИИ, что делать</button>
-                <button onClick={() => { const v = useView.getState(); v.setScenario(`chaos:${s.ids.join(',')}`); v.setTab('twin'); window.scrollTo({ top: 0 }) }}
+                <button onClick={() => { const v = useView.getState(); v.setScenario(`cfg:${s.ids.join(',')}|`); v.setTab('twin'); window.scrollTo({ top: 0 }) }}
                   className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"><ArrowUpRight size={15} />Открыть в Двойнике</button>
               </div>
             </div>

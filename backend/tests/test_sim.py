@@ -67,3 +67,17 @@ def test_actions_have_money_assumptions():
     if w["combo"]:
         a, b = w["combo"]["ids"]
         assert w["combo"]["money"]["once"] == INTERVENTIONS[a]["money"]["once"] + INTERVENTIONS[b]["money"]["once"]
+
+
+def test_shift_builder_faults_and_actions():
+    from app.sim.api import options, run_payload, shift
+    o = options()
+    assert len(o["faults"]) == 7 and len(o["actions"]) == 6 and all(x["short"] for x in o["faults"] + o["actions"])
+    normal = shift("", "", 10)
+    assert normal["plan_per_shift"] == 120 and normal["forecast"]["delta"] == 0
+    bad = shift("filter_clog,power_outage", "", 10)
+    assert bad["forecast"]["delta_ci"][1] < 0                     # сбои уверенно отнимают машины
+    fixed = shift("filter_clog,power_outage", "paint_service", 10)
+    assert fixed["forecast"]["good_per_shift"] > bad["forecast"]["good_per_shift"]   # действие возвращает часть
+    assert fixed["actions"][0]["cost_per_shift"] > 0
+    assert run_payload("cfg:filter_clog|paint_service", 7)["scenario_name"] == "Засор фильтра окраски, Обслужить камеру окраски"

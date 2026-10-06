@@ -29,7 +29,21 @@ def con():
     return _con
 
 
+def parse_cfg(name: str) -> tuple[list[str], list[str]]:
+    """cfg:<сбои через запятую>|<действия через запятую> → (сбои, действия)."""
+    from ..stress import BY_ID
+    f, _, a = name[4:].partition("|")
+    return [i for i in f.split(",") if i in BY_ID], [i for i in a.split(",") if i in INTERVENTIONS]
+
+
 def _scenario(name: str):
+    if name.startswith("cfg:"):
+        from ..stress import combine
+        faults, actions = parse_cfg(name)
+        p = combine(faults) if faults else SCENARIOS["base"]
+        for a in actions:
+            p = INTERVENTIONS[a]["apply"](p)
+        return p
     if name.startswith("chaos:"):
         from ..stress import BY_ID, combine
         ids = [i for i in name[6:].split(",") if i in BY_ID]
@@ -48,6 +62,11 @@ def _scenario(name: str):
 
 
 def scenario_name(name: str) -> str:
+    if name.startswith("cfg:"):
+        from ..stress import BY_ID
+        faults, actions = parse_cfg(name)
+        parts = [BY_ID[i]["short"] for i in faults] + [INTERVENTIONS[a]["short"] for a in actions]
+        return ", ".join(parts) if parts else "Обычная смена"
     if name.startswith("chaos:"):
         from ..stress import BY_ID
         ids = [i for i in name[6:].split(",") if i in BY_ID]
@@ -154,3 +173,60 @@ def futures_payload(scenario: str, action: str, seed: int) -> dict:
 @router.get("/futures")
 def futures(scenario: str = "paint_degradation", action: str = "paint_service", seed: int = 7) -> dict:
     return futures_payload(scenario, action, seed)
+
+
+PLAN_PER_SHIFT = 120  # факт ТЗ: план 120 машин на линию за смену
+
+
+@lru_cache(maxsize=128)
+def _shift(faults: tuple[str, ...], actions: tuple[str, ...], reps: int) -> dict:
+    import numpy as np
+    from ..stress import combine
+    from .whatif import paired_ci
+    seeds = [1000 + i for i in range(reps)]
+    base_p = SCENARIOS["base"]
+    p = combine(list(faults)) if faults else base_p
+    for a in actions:
+        p = INTERVENTIONS[a]["apply"](p)
+    shifts = base_p.horizon / base_p.shift_minutes
+
+    def stats(params):
+        runs = [simulate(params, s) for s in seeds]
+        ks = [kpis(r, IDEAL_LINE_CYCLE) for r in runs]
+        good = np.array([r.good_out for r in runs]) / shifts
+        down = np.array([sum(b - a for st in r.states for a, b, x in r.states[st] if x == "down") for r in runs]) / shifts
+        return good, {"good_per_shift": float(good.mean()), "lo": float(np.percentile(good, 10)), "hi": float(np.percentile(good, 90)),
+                      "oee_pct": float(np.mean([k["oee_pct"] for k in ks])), "downtime_min": float(down.mean()),
+                      "paint_defect_pct": float(np.mean([k["defect_pct"]["paint"] for k in ks]))}
+
+    g0, normal = stats(base_p)
+    if faults or actions:
+        g1, forecast = stats(p)
+        m, lo, hi = paired_ci(g1 - g0)
+        forecast.update({"delta": m, "delta_ci": [lo, hi]})
+    else:
+        forecast = {**normal, "delta": 0.0, "delta_ci": [0.0, 0.0]}
+    from ..stress import BY_ID
+    shifts_month = MONEY_DEFAULTS["work_days_month"] * MONEY_DEFAULTS["shifts_per_day"]
+    return {"source": "sim", "reps": reps, "plan_per_shift": PLAN_PER_SHIFT, "normal": normal, "forecast": forecast,
+            "faults": [{"id": f, "name": BY_ID[f]["name"]} for f in faults],
+            "actions": [{"id": a, "name": INTERVENTIONS[a]["name"], "cost_per_shift": INTERVENTIONS[a]["money"]["month"] / shifts_month,
+                         "once": INTERVENTIONS[a]["money"]["once"]} for a in actions],
+            "scenario": f"cfg:{','.join(faults)}|{','.join(actions)}"}
+
+
+@router.get("/shift")
+def shift(faults: str = "", actions: str = "", reps: int = Query(20, ge=2, le=30)) -> dict:
+    """Одна смена: обычная (без сбоев и действий) против прогноза с выбранными сбоями и действиями. Одинаковые случайные числа."""
+    from ..stress import BY_ID
+    f = tuple(sorted(i for i in faults.split(",") if i in BY_ID))
+    a = tuple(i for i in INTERVENTIONS if i in actions.split(","))
+    return _shift(f, a, reps)
+
+
+@router.get("/options")
+def options() -> dict:
+    """Что можно включить в симуляции смены: сбои и действия."""
+    from ..stress import SCENARIOS as STRESS
+    return {"faults": [{"id": s["id"], "short": s["short"], "name": s["name"], "detail": s["detail"]} for s in STRESS],
+            "actions": [{"id": k, "short": v["short"], "name": v["name"], "detail": v["detail"], "do": v["do"], "money": v["money"]} for k, v in INTERVENTIONS.items()]}

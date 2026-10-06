@@ -37,7 +37,7 @@ export const useView = create<ViewState>((set) => ({
   speed: 20,
   view: '3d',
   touring: false,
-  scenario: 'paint_degradation',
+  scenario: 'base',
   setScenario: (scenario) => set({ scenario }),
   tab: 'facts',
   date: todayISO(),
