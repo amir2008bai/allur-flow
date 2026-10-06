@@ -9,7 +9,7 @@ from .sim.api import IDEAL_LINE_CYCLE
 from .sim.engine import simulate
 from .sim.kpi import bottleneck, kpis
 from .sim.params import BASE
-from .stress import DATA_FAULTS, SCENARIOS, _inject
+from .stress import DATA_FAULTS, SCENARIOS, _inject, chaos
 
 router = APIRouter(prefix="/api/stress")
 BY_ID = {s["id"]: s for s in SCENARIOS}
@@ -54,3 +54,24 @@ def data_fault(id: str, seed: int = 101) -> dict:
     base = simulate(BASE, seed)
     issues = check_frames(_inject(id, base.frames), BASE.buffer_cap)
     return {"id": id, "name": names[id], "issues": issues[:8], "count": len(issues)}
+
+
+@lru_cache(maxsize=64)
+def _chaos(key: str, seed: int) -> dict:
+    ids = [i for i in key.split(",") if i in BY_ID]
+    if not ids:
+        raise HTTPException(422, "Выберите хотя бы один сбой")
+    summary, run = chaos(ids, seed)
+    alerts = [{"t": al.t, "title": BUCKET_RU.get(bucket(al), al.title), "text": al.text} for al in detect_run(run)]
+    return {
+        "source": "sim", "scenario": "chaos", "scenario_name": "Беспредел: " + ", ".join(BY_ID[i]["name"] for i in ids),
+        "seed": seed, "horizon": run.horizon, "buffer_cap": run.params.buffer_cap,
+        "kpi": kpis(run, IDEAL_LINE_CYCLE), "bottleneck": bottleneck(run),
+        "stops": [e for e in run.events if e["type"] == "stop_start"], "frames": run.frames, "alerts": alerts,
+        "summary": summary,
+    }
+
+
+@router.get("/chaos")
+def chaos_run(ids: str, seed: int = 101) -> dict:
+    return _chaos(",".join(sorted(set(ids.split(",")))), seed)

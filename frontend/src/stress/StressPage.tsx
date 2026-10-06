@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
-import { ArrowUpRight, PackageX, PlugZap, Sparkles, Target, Unlink, Users, Wind, Zap, type LucideIcon } from 'lucide-react'
+import { ArrowUpRight, Bomb, CheckCircle2, PackageX, PlugZap, RotateCcw, Sparkles, Target, Unlink, Users, Wind, XCircle, Zap, type LucideIcon } from 'lucide-react'
 import ErrorBoundary from '../ErrorBoundary'
 import type { SimRun } from '../source'
 import Plan2D from '../twin/Plan2D'
@@ -13,46 +13,60 @@ import { Card, SourceBadge } from '../ui'
 const Scene3D = lazy(() => import('../twin/Scene3D'))
 
 interface Scenario { id: string; name: string; detail: string; zone: ZoneId; window: [number, number] }
-interface StressRun extends SimRun {
-  fault: Scenario
-  verdict: { ok: boolean; seen: string; delay_min: number | null }
-  alerts: { t: number; title: string; text: string }[]
-  compare: { good_fault: number; good_base: number }
+interface FaultResult { id: string; name: string; window: [number, number]; loss_alone: number; detected: boolean; delay_min: number | null }
+interface Summary {
+  ids: string[]; good_base: number; good_fault: number; loss: number; loss_pct: number; plan: number; plan_pct_fault: number; plan_pct_base: number
+  oee_base: number; oee_fault: number; downtime_base: number; downtime_fault: number; synergy: number; faults: FaultResult[]; detected: number
 }
+interface ChaosRun extends SimRun { summary: Summary; alerts: { t: number; title: string; text: string }[] }
 interface DataResult { id: string; name: string; issues: { type: string; text: string }[]; count: number }
 
 const ICON: Record<string, LucideIcon> = { micro_stops: Zap, conveyor_break: Unlink, filter_clog: Wind, parts_shortage: PackageX, quality_burst: Target, shift_change: Users, power_outage: PlugZap }
-function FaultIcon({ id, size = 22 }: { id: string; size?: number }) {
+function FaultIcon({ id, size = 20, on = true }: { id: string; size?: number; on?: boolean }) {
   const I = ICON[id] ?? Zap
-  return <span className="grid h-10 w-10 place-items-center rounded-xl bg-red-50 text-red-600 ring-1 ring-red-100"><I size={size} strokeWidth={2} /></span>
+  return <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ring-1 transition ${on ? 'bg-red-600 text-white ring-red-600' : 'bg-red-50 text-red-600 ring-red-100'}`}><I size={size} strokeWidth={2} /></span>
+}
+const n0 = (x: number) => Math.round(x).toLocaleString('ru-RU')
+const plural = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'машина' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'машины' : 'машин')
+
+function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: 'bad' | 'good' }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className={`mt-1 text-2xl font-semibold tabular-nums ${tone === 'bad' ? 'text-red-600' : tone === 'good' ? 'text-emerald-600' : ''}`}>{value}</div>
+      {sub && <div className="text-xs text-slate-400">{sub}</div>}
+    </div>
+  )
 }
 
 export default function StressPage() {
   const [list, setList] = useState<{ process: Scenario[]; data: { id: string; name: string }[] } | null>(null)
-  const [run, setRun] = useState<StressRun | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
+  const [sel, setSel] = useState<string[]>([])
+  const [run, setRun] = useState<ChaosRun | null>(null)
+  const [busy, setBusy] = useState(false)
   const [seed, setSeed] = useState(101)
   const [data, setData] = useState<Record<string, DataResult>>({})
-  const [view, setView] = useState<'3d' | 'plan'>('3d')
+  const [view, setView] = useState<'3d' | 'plan'>('plan')
   const t = useView((v) => v.t)
 
   useEffect(() => { fetch('/api/stress/scenarios').then((r) => r.json()).then(setList).catch(() => {}) }, [])
 
-  const start = async (s: Scenario) => {
-    setBusy(s.id)
+  const toggle = (id: string) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
+
+  const start = async () => {
+    if (!sel.length) return
+    setBusy(true)
     try {
-      const next = seed === 105 ? 101 : seed + 1
-      const r: StressRun = await fetch(`/api/stress/run?id=${s.id}&seed=${seed}`).then((x) => x.json())
-      setSeed(next)
+      const r: ChaosRun = await fetch(`/api/stress/chaos?ids=${sel.join(',')}&seed=${seed}`).then((x) => x.json())
+      setSeed(seed === 105 ? 101 : seed + 1)
       setRun(r)
-      useView.getState().setScreen({ stressInfo: `${r.fault.name} — ${r.verdict.seen}` })
+      const s = r.summary
+      useView.getState().setScreen({ stressInfo: `${r.scenario_name}: годных ${s.good_fault} вместо ${s.good_base} (−${s.loss}), замечено ${s.detected} из ${s.faults.length}` })
       const v = useView.getState()
-      v.setPlaying(false)
-      v.setT(Math.max(0, r.fault.window[0] - 20))   // за 20 мин до сбоя
-      v.select(r.fault.zone)
-      v.setSpeed(20)
+      const first = Math.min(...s.faults.map((f) => f.window[0]))
+      v.setPlaying(false); v.setT(Math.max(0, first - 20)); v.select(null); v.setSpeed(60)
       setTimeout(() => { document.getElementById('stress-viewer')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); useView.getState().setPlaying(true) }, 400)
-    } finally { setBusy(null) }
+    } finally { setBusy(false) }
   }
 
   const breakData = async (id: string) => {
@@ -60,88 +74,128 @@ export default function StressPage() {
     setData((d) => ({ ...d, [id]: r }))
   }
 
-  const shownAlerts = useMemo(() => (run ? run.alerts.filter((a) => a.t <= t).slice(-4).reverse() : []), [run, t])
-  const after = run ? t >= Math.min(run.fault.window[1], run.fault.window[0] + 90) : false
+  const shownAlerts = useMemo(() => (run ? run.alerts.filter((a) => a.t <= t).slice(-2).reverse() : []), [run, t])
+  const goodNow = run ? run.frames[Math.min(Math.floor(t), run.frames.length - 1)]?.good ?? 0 : 0
 
   if (!list) return <div className="text-sm text-slate-500">Загрузка…</div>
+  const s = run?.summary
+  const maxLoss = s ? Math.max(1, ...s.faults.map((f) => f.loss_alone)) : 1
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Испытания: сломайте линию сами</h1>
-        <p className="text-sm text-slate-500">Выберите сбой — и посмотрите, заметит ли его двойник и как быстро.</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">Испытания: устройте беспредел</h1>
+          <p className="text-sm text-slate-500">Отметьте один или несколько сбоев — двойник покажет, сколько машин недособерётся и заметит ли он каждый сбой.</p>
+        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {list.process.map((s) => (
-          <button key={s.id} disabled={!!busy} onClick={() => start(s)}
-            className={`rounded-2xl bg-white p-4 text-left shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 ${run?.fault.id === s.id ? 'ring-2 ring-slate-900' : 'ring-slate-200'}`}>
-            <FaultIcon id={s.id} />
-            <div className="mt-2 text-sm font-semibold leading-tight">{s.name}</div>
-            <div className="mt-1 line-clamp-2 text-xs text-slate-500">{s.detail}</div>
-            <div className="mt-3 text-xs font-medium text-red-600">{busy === s.id ? 'Запускаю…' : 'Устроить сбой →'}</div>
-          </button>
-        ))}
+        {list.process.map((sc) => {
+          const on = sel.includes(sc.id)
+          return (
+            <button key={sc.id} onClick={() => toggle(sc.id)} aria-pressed={on}
+              className={`flex gap-3 rounded-2xl bg-white p-4 text-left shadow-sm ring-1 transition hover:shadow-md ${on ? 'ring-2 ring-red-500' : 'ring-slate-200'}`}>
+              <FaultIcon id={sc.id} on={on} />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold leading-tight">{sc.name}</div>
+                <div className="mt-1 line-clamp-2 text-xs text-slate-500">{sc.detail}</div>
+              </div>
+            </button>
+          )
+        })}
       </div>
 
-      {run && (
+      {/* панель запуска */}
+      <div className="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 rounded-2xl bg-slate-900 px-4 py-3 text-white shadow-2xl">
+        <span className="text-sm">{sel.length ? <>Выбрано сбоев: <b>{sel.length}</b></> : 'Отметьте сбои выше'}</span>
+        <button onClick={() => setSel(list.process.map((p) => p.id))} className="rounded-lg px-2 py-1 text-xs text-slate-300 hover:bg-white/10">Выбрать все</button>
+        {sel.length > 0 && <button onClick={() => setSel([])} className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-300 hover:bg-white/10"><RotateCcw size={12} />Сбросить</button>}
+        <button disabled={!sel.length || busy} onClick={start} className="ml-auto flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold hover:bg-red-500 disabled:opacity-40">
+          <Bomb size={16} />{busy ? 'Ломаю линию…' : sel.length > 1 ? 'Устроить беспредел' : 'Устроить сбой'}
+        </button>
+      </div>
+
+      {run && s && (
         <Card className="scroll-mt-20 overflow-hidden">
           <div id="stress-viewer" />
-          <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-3">
-            <FaultIcon id={run.fault.id} size={20} />
-            <div className="min-w-0 flex-1">
-              <div className="font-semibold">{run.fault.name}</div>
-              <div className="text-xs text-slate-500">сбой с {clock(run.fault.window[0])} · прогон №{run.seed - 100}</div>
-            </div>
-            <div className="flex rounded-xl bg-slate-100 p-1">
-              {(['3d', 'plan'] as const).map((v) => <button key={v} onClick={() => setView(v)} className={`rounded-lg px-3 py-1 text-xs font-medium ${view === v ? 'bg-white shadow-sm' : 'text-slate-500'}`}>{v === '3d' ? '3D' : 'План'}</button>)}
-            </div>
-            <SourceBadge source="sim" />
+          {/* итог: сколько машин потеряли */}
+          <div className="grid gap-3 border-b border-slate-100 p-5 sm:grid-cols-2 lg:grid-cols-4">
+            <Kpi label="Годных за 2 смены" value={`${n0(s.good_fault)}`} sub={`без сбоев было бы ${n0(s.good_base)}`} />
+            <Kpi label="Потеряно" value={`−${n0(s.loss)} ${plural(s.loss)}`} sub={`−${Math.round(s.loss_pct)}% выпуска`} tone="bad" />
+            <Kpi label="План 240 за 2 смены" value={`${Math.round(s.plan_pct_fault)}%`} sub={`без сбоев ${Math.round(s.plan_pct_base)}%`} tone={s.plan_pct_fault < 95 ? 'bad' : undefined} />
+            <Kpi label="КПД линии (OEE)" value={`${Math.round(s.oee_fault)}%`} sub={`было ${Math.round(s.oee_base)}% · простоев ${n0(s.downtime_fault)} мин вместо ${n0(s.downtime_base)}`} tone={s.oee_fault < 85 ? 'bad' : undefined} />
           </div>
-          <div className="relative h-[52vh] min-h-[380px] bg-[#f4f5f7]">
-            {view === '3d'
-              ? <ErrorBoundary key={run.fault.id + run.seed} fallback={<Plan2D run={run} />}><Suspense fallback={null}><Scene3D run={run} /></Suspense></ErrorBoundary>
-              : <Plan2D run={run} />}
-            <CauseBanner run={run} />
-            <ZonePanel run={run} />
-            {/* тревоги всплывают по ходу времени */}
-            <div className="pointer-events-none absolute left-3 top-3 flex w-72 flex-col gap-2">
-              {shownAlerts.map((a) => (
-                <div key={a.t + a.title} className="animate-[fadein_.3s_ease] rounded-xl bg-white/95 px-3 py-2 shadow-lg ring-1 ring-red-200 backdrop-blur">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-red-600"><span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />{clock(a.t)} · {a.title}</div>
-                  <div className="mt-0.5 text-xs text-slate-600">{a.text}</div>
-                </div>
-              ))}
+
+          <div className="grid lg:grid-cols-[1fr_340px]">
+            <div className="relative h-[50vh] min-h-[360px] bg-[#f4f5f7]">
+              {view === '3d'
+                ? <ErrorBoundary key={run.seed + s.ids.join()} fallback={<Plan2D run={run} />}><Suspense fallback={null}><Scene3D run={run} /></Suspense></ErrorBoundary>
+                : <Plan2D run={run} />}
+              <div className="absolute right-3 top-3 flex rounded-xl bg-white/90 p-1 shadow-sm ring-1 ring-slate-200">
+                {(['plan', '3d'] as const).map((v) => <button key={v} onClick={() => setView(v)} className={`rounded-lg px-3 py-1 text-xs font-medium ${view === v ? 'bg-slate-900 text-white' : 'text-slate-500'}`}>{v === '3d' ? '3D' : 'План'}</button>)}
+              </div>
+              <div className="absolute right-3 top-14 rounded-xl bg-white/95 px-3 py-1.5 text-right shadow-sm ring-1 ring-slate-200">
+                <div className="text-[10px] text-slate-500">годных сейчас</div>
+                <div className="text-xl font-semibold tabular-nums leading-none">{goodNow}</div>
+              </div>
+              <CauseBanner run={run} />
+              <ZonePanel run={run} />
+              <div className="pointer-events-none absolute left-3 top-3 flex w-60 flex-col gap-1.5 opacity-95">
+                {shownAlerts.map((a) => (
+                  <div key={a.t + a.title} className="animate-[fadein_.3s_ease] rounded-xl bg-white/95 px-3 py-2 shadow-lg ring-1 ring-red-200 backdrop-blur">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-red-600"><span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />{clock(a.t)} · {a.title}</div>
+                    <div className="mt-0.5 text-xs text-slate-600">{a.text}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-          <div className="border-t border-slate-100 px-5 py-4"><Timeline run={run} /></div>
-          <div className={`grid gap-4 border-t border-slate-100 px-5 py-4 transition sm:grid-cols-3 ${after ? 'bg-emerald-50/50' : ''}`}>
-            <div>
-              <div className="text-xs text-slate-500">Система заметила?</div>
-              <div className={`mt-1 text-2xl font-semibold ${run.verdict.ok ? 'text-emerald-600' : 'text-red-600'}`}>{run.verdict.ok ? '✓ Да' : '✕ Нет'}</div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Тревога через</div>
-              <div className="mt-1 text-2xl font-semibold">{run.verdict.delay_min != null ? `${Math.round(run.verdict.delay_min)} мин` : '—'}</div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Годных за 2 смены</div>
-              <div className="mt-1 text-2xl font-semibold">{run.compare.good_fault} <span className="text-sm font-normal text-slate-400">без сбоя {run.compare.good_base}</span></div>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-3 sm:col-span-3">
-              <p className="text-sm text-slate-600">{run.verdict.seen}</p>
-              <div className="flex gap-2">
-                <button onClick={() => useView.getState().ask(`Что произошло в испытании «${run.fault.name}» и что делать начальнику смены?`)} className="flex items-center gap-1.5 rounded-xl bg-violet-50 px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100"><Sparkles size={15} />Спросить ИИ</button>
-                <button onClick={() => { const v = useView.getState(); v.setScenario(`stress:${run.fault.id}`); v.setTab('twin'); window.scrollTo({ top: 0 }) }} className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"><ArrowUpRight size={15} />Открыть в Двойнике</button>
+
+            {/* какой сбой сколько стоит и заметила ли система */}
+            <div className="border-t border-slate-100 p-5 lg:border-l lg:border-t-0">
+              <div className="flex items-baseline justify-between">
+                <div className="text-sm font-semibold">Что стоило дороже всего</div>
+                <div className="text-xs text-slate-500">замечено {s.detected} из {s.faults.length}</div>
+              </div>
+              <ul className="mt-3 space-y-3">
+                {s.faults.map((f) => (
+                  <li key={f.id}>
+                    <div className="flex items-center gap-2 text-sm">
+                      {f.detected ? <CheckCircle2 size={15} className="shrink-0 text-emerald-600" /> : <XCircle size={15} className="shrink-0 text-red-500" />}
+                      <span className="min-w-0 flex-1 truncate" title={f.name}>{f.name}</span>
+                      <span className="shrink-0 tabular-nums font-semibold">−{f.loss_alone}</span>
+                    </div>
+                    <div className="ml-6 mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-red-500" style={{ width: `${(100 * Math.max(0, f.loss_alone)) / maxLoss}%` }} /></div>
+                    <div className="ml-6 mt-0.5 text-[11px] text-slate-400">{f.detected ? `тревога через ${Math.round(f.delay_min ?? 0)} мин` : 'тревоги не было'} · с {clock(f.window[0])}</div>
+                  </li>
+                ))}
+              </ul>
+              {s.faults.length > 1 && s.synergy !== 0 && (
+                <p className="mt-3 text-xs text-slate-500">
+                  {s.synergy > 0 ? `Вместе сбои бьют сильнее: ещё −${s.synergy} сверх суммы по отдельности.` : `Часть потерь совпала по времени: вместе на ${-s.synergy} меньше, чем сумма по отдельности.`}
+                </p>
+              )}
+              <div className="mt-4 flex flex-col gap-2">
+                <button onClick={() => useView.getState().ask(`Что произошло в испытании (${s.faults.map((f) => f.name).join(', ')}) и что делать начальнику смены в первую очередь?`)}
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-violet-50 px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100"><Sparkles size={15} />Спросить ИИ, что делать</button>
+                <button onClick={() => { const v = useView.getState(); v.setScenario(`chaos:${s.ids.join(',')}`); v.setTab('twin'); window.scrollTo({ top: 0 }) }}
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"><ArrowUpRight size={15} />Открыть в Двойнике</button>
               </div>
             </div>
           </div>
+          <div className="border-t border-slate-100 px-5 py-4"><Timeline run={run} /></div>
+          <div className="flex items-center justify-between border-t border-slate-100 px-5 py-2 text-[11px] text-slate-400"><span>{run.scenario_name}</span><SourceBadge source="sim" /></div>
         </Card>
       )}
 
       <Card className="p-5">
-        <h2 className="font-semibold">Сломайте данные</h2>
-        <p className="text-sm text-slate-500">Как система реагирует на сбои датчиков и связи.</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Сломайте данные</h2>
+            <p className="text-sm text-slate-500">Как система реагирует на сбои датчиков и связи.</p>
+          </div>
+          <button onClick={() => list.data.forEach((d) => breakData(d.id))} className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"><Bomb size={15} />Сломать всё</button>
+        </div>
         <div className="mt-4 divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
           {list.data.map((d) => {
             const r = data[d.id]
@@ -149,7 +203,7 @@ export default function StressPage() {
               <div key={d.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5">
                 <div className="min-w-0">
                   <div className="text-sm">{d.name}</div>
-                  {r && <div className="mt-0.5 text-xs text-emerald-700">✓ поймано: {r.issues[0]?.text ?? '—'}{r.count > 1 ? ` (+${r.count - 1})` : ''}</div>}
+                  {r && <div className="mt-0.5 flex items-center gap-1 text-xs text-emerald-700"><CheckCircle2 size={12} />поймано: {r.issues[0]?.text ?? '—'}{r.count > 1 ? ` (+${r.count - 1})` : ''}</div>}
                 </div>
                 <button onClick={() => breakData(d.id)} className="rounded-lg bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Сломать</button>
               </div>

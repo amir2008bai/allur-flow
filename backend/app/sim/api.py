@@ -28,6 +28,12 @@ def con():
 
 
 def _scenario(name: str):
+    if name.startswith("chaos:"):
+        from ..stress import BY_ID, combine
+        ids = [i for i in name[6:].split(",") if i in BY_ID]
+        if not ids:
+            raise HTTPException(404, f"Нет сбоев {name}")
+        return combine(ids)
     if name.startswith("stress:"):
         from ..stress import SCENARIOS as STRESS
         sc = next((s for s in STRESS if s["id"] == name[7:]), None)
@@ -40,6 +46,10 @@ def _scenario(name: str):
 
 
 def scenario_name(name: str) -> str:
+    if name.startswith("chaos:"):
+        from ..stress import BY_ID
+        ids = [i for i in name[6:].split(",") if i in BY_ID]
+        return f"Беспредел: {len(ids)} сбоя" if len(ids) > 1 else (f"Испытание: {BY_ID[ids[0]]['name']}" if ids else name)
     if name.startswith("stress:"):
         from ..stress import SCENARIOS as STRESS
         sc = next((s for s in STRESS if s["id"] == name[7:]), None)

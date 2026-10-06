@@ -90,7 +90,7 @@ export default function TwinPage() {
             {s.name}
           </button>
         ))}
-        {scenario.startsWith('stress:') && (
+        {(scenario.startsWith('stress:') || scenario.startsWith('chaos:')) && (
           <span className="flex items-center gap-1 rounded-xl bg-red-600 py-2 pl-4 pr-2 text-sm font-medium text-white">
             {run?.scenario_name ?? 'Испытание'}
             <button onClick={() => setScenario('base')} className="ml-1 rounded-lg px-1.5 hover:bg-red-700" aria-label="Закрыть испытание">✕</button>

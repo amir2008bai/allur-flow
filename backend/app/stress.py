@@ -171,3 +171,56 @@ def run_data_faults(seed: int = 101) -> list[dict]:
                     "clean_ok": not after, "removed": removed, "good_per_shift_after_clean": good_shift,
                     "false_alarm_on_clean_data": sorted(clean_issues)})
     return out
+
+
+# ── Беспредел: несколько сбоев сразу ─────────────────────────────────────────
+BY_ID = {s["id"]: s for s in SCENARIOS}
+# какие тревоги ожидаем на каждый сбой (для «заметила ли система»)
+EXPECT = {"micro_stops": {"micro_stops"}, "conveyor_break": {"stop_asm"}, "filter_clog": {"paint_slow", "defect_burst", "buffer_empty", "buffer_low"},
+          "parts_shortage": {"shortage"}, "quality_burst": {"defect_burst"}, "shift_change": {"buffer_low", "buffer_empty", "micro_stops"},
+          "power_outage": {"stop_paint", "stop_asm", "stop_other"}}
+
+
+def combine(ids: list[str]):
+    """Сложить сбои в одни параметры линии: изменения станций, деградации, остановки, нехватки."""
+    p = BASE
+    stations = dict(BASE.stations)
+    degs, downs, shorts = [], [], []
+    for i in ids:
+        q = BY_ID[i]["params"]()
+        for s, sp in q.stations.items():
+            if sp != BASE.stations[s]:
+                stations[s] = sp
+        degs += list(q.degradations); downs += list(q.forced_downs); shorts += list(q.shortages)
+    return p.with_(stations=stations, degradations=tuple(degs), forced_downs=tuple(downs), shortages=tuple(shorts))
+
+
+def chaos(ids: list[str], seed: int) -> dict:
+    from .sim.api import IDEAL_LINE_CYCLE
+    from .sim.kpi import kpis
+    base, run = simulate(BASE, seed), simulate(combine(ids), seed)
+    kb, kr = kpis(base, IDEAL_LINE_CYCLE), kpis(run, IDEAL_LINE_CYCLE)
+    alerts = detect_run(run)
+    faults = []
+    for i in ids:
+        sc = BY_ID[i]
+        a, b = sc["window"]
+        alone = simulate(sc["params"](), seed).good_out
+        hit = [al.t for al in alerts if bucket(al) in EXPECT[i] and a <= al.t <= max(b, a + 90)]
+        faults.append({"id": i, "name": sc["name"], "window": [a, b], "loss_alone": base.good_out - alone,
+                       "detected": bool(hit), "delay_min": (min(hit) - a) if hit else None})
+    total_loss = base.good_out - run.good_out
+    sum_alone = sum(f["loss_alone"] for f in faults)
+    down = lambda r: sum(b - a for s in r.states for a, b, st in r.states[s] if st == "down")  # noqa: E731
+    plan = 240
+    return {
+        "ids": ids, "seed": seed,
+        "good_base": base.good_out, "good_fault": run.good_out, "loss": total_loss,
+        "loss_pct": 100 * total_loss / max(1, base.good_out),
+        "plan": plan, "plan_pct_fault": 100 * run.good_out / plan, "plan_pct_base": 100 * base.good_out / plan,
+        "oee_base": kb["oee_pct"], "oee_fault": kr["oee_pct"],
+        "downtime_base": down(base), "downtime_fault": down(run),
+        "synergy": total_loss - sum_alone,
+        "faults": sorted(faults, key=lambda f: -f["loss_alone"]),
+        "detected": sum(f["detected"] for f in faults),
+    }, run
