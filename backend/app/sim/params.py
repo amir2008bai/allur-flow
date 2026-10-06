@@ -102,6 +102,13 @@ SCENARIO_RU = {
 }
 
 
+def service_paint_at(p: LineParams, at: float) -> LineParams:
+    """Обслужить камеру окраски в минуту at: 20 мин плановой остановки, деградация окраски сброшена после."""
+    degs = tuple(replace(d, reset_at=at + 20) if d.station == "paint" else d for d in p.degradations)
+    stop = ForcedDown(station="paint", start=at, minutes=20, planned=True, reason="Плановое обслуживание камеры")
+    return p.with_(degradations=degs, forced_downs=p.forced_downs + (stop,))
+
+
 def _paint_service(p: LineParams) -> LineParams:
     """Обслужить окрасочную камеру в 200-ю минуту: 20 мин плановой остановки, деградация сброшена."""
     degs = tuple(replace(d, reset_at=220) if d.station == "paint" else d for d in p.degradations)

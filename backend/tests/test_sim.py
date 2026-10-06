@@ -81,3 +81,30 @@ def test_shift_builder_faults_and_actions():
     assert fixed["forecast"]["good_per_shift"] > bad["forecast"]["good_per_shift"]   # действие возвращает часть
     assert fixed["actions"][0]["cost_per_shift"] > 0
     assert run_payload("cfg:filter_clog|paint_service", 7)["scenario_name"] == "Засор фильтра окраски, Обслужить камеру окраски"
+
+
+def test_feedback_changes_twin_context_and_recalculates():
+    # ввод людей меняет знания двойника → новая версия → новый расчёт (а не старый кеш)
+    from app.learn.api import calib
+    from app.sim.api import shift, twin_context
+    calib().reset()
+    v0 = twin_context()
+    r0 = shift("", "", 10)
+    calib().add(100, 20, "тест")
+    v1 = twin_context()
+    r1 = shift("", "", 10)
+    calib().reset()
+    assert not v0["learned"] and v1["learned"] and v0["version"] != v1["version"]
+    assert r1["twin"]["version"] == v1["version"]
+    assert r1["normal"]["good_per_shift"] < r0["normal"]["good_per_shift"]   # больше брака → меньше годных
+
+
+def test_service_now_earlier_is_better():
+    # «сейчас» — момент вмешательства важен: раннее обслуживание даёт больше машин
+    from app.sim.api import futures_payload
+    early = futures_payload("paint_degradation", "paint_service", 7, 200)
+    late = futures_payload("paint_degradation", "paint_service", 7, 600)
+    base = early["do_nothing"]["kpi"]["good_per_shift"]
+    assert early["intervene"]["kpi"]["good_per_shift"] > late["intervene"]["kpi"]["good_per_shift"] >= base
+    # до момента вмешательства будущие совпадают (одинаковые случайности)
+    assert early["intervene"]["frames"][150]["good"] == early["do_nothing"]["frames"][150]["good"]

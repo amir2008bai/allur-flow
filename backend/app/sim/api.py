@@ -29,6 +29,29 @@ def con():
     return _con
 
 
+def twin_context() -> dict:
+    """Текущее состояние знаний двойника: брак окраски уточняется вводом людей и камерой (байес).
+    Пока обратной связи нет — допущение из данных. Версия входит в ключи кешей: новые знания → новый расчёт."""
+    import hashlib
+    from ..learn.api import calib
+    c = calib()
+    learned = len(c.obs) > len(c.start)
+    st = SCENARIOS["base"].stations
+    p = float(c.history[-1]["mean"]) if learned else st["paint"].defect_p
+    raw = f"{p:.4f}|" + "|".join(f"{k}:{v.cycle:.3f}:{v.defect_p:.4f}:{v.mtbf_work}:{v.mttr}" for k, v in st.items())
+    return {"paint_defect_p": p, "learned": learned, "version": hashlib.sha1(raw.encode()).hexdigest()[:10],
+            "source": "feedback" if learned else "assumption", "observations": len(c.obs) - len(c.start)}
+
+
+def twin_overlay(p, ctx: dict | None = None):
+    """Применить знания двойника к параметрам сценария (общий BASE не меняется)."""
+    ctx = ctx or twin_context()
+    if not ctx["learned"]:
+        return p
+    from dataclasses import replace
+    return p.with_(stations={**p.stations, "paint": replace(p.stations["paint"], defect_p=ctx["paint_defect_p"])})
+
+
 def parse_cfg(name: str) -> tuple[list[str], list[str]]:
     """cfg:<сбои через запятую>|<действия через запятую> → (сбои, действия)."""
     from ..stress import BY_ID
@@ -78,9 +101,14 @@ def scenario_name(name: str) -> str:
     return SCENARIO_RU.get(name, name)
 
 
-@lru_cache(maxsize=64)
 def run_payload(scenario: str, seed: int) -> dict:
-    run = simulate(_scenario(scenario), seed)
+    return _run_payload(scenario, seed, twin_context()["version"])
+
+
+@lru_cache(maxsize=64)
+def _run_payload(scenario: str, seed: int, ver: str) -> dict:
+    ctx = twin_context()
+    run = simulate(twin_overlay(_scenario(scenario), ctx), seed)
     log_run(con(), f"{scenario}:{seed}", scenario, run)
     bn = bottleneck(run)
     stops = [e for e in run.events if e["type"] == "stop_start"]
@@ -94,7 +122,11 @@ def run_payload(scenario: str, seed: int) -> dict:
         "defects": [e for e in run.events if e["type"] in ("defect", "scrap")],
         "frames": run.frames,
         "alerts": _alerts(run),
+        "twin": ctx,
     }
+
+
+run_payload.cache_clear = _run_payload.cache_clear  # type: ignore[attr-defined]
 
 
 def _alerts(run) -> list[dict]:
@@ -120,9 +152,14 @@ def run(scenario: str = "base", seed: int = 7) -> dict:
     return run_payload(scenario, seed)
 
 
-@lru_cache(maxsize=16)
 def _whatif(scenario: str, reps: int) -> dict:
-    res = compare(_scenario(scenario), list(INTERVENTIONS), reps=reps)
+    return _whatif_v(scenario, reps, twin_context()["version"])
+
+
+@lru_cache(maxsize=16)
+def _whatif_v(scenario: str, reps: int, ver: str) -> dict:
+    ctx = twin_context()
+    res = compare(twin_overlay(_scenario(scenario), ctx), list(INTERVENTIONS), reps=reps)
     res["baseline"]["bottleneck"] = str(res["baseline"]["bottleneck"])
     for o in res["options"]:
         o["bottleneck_after"] = str(o["bottleneck_after"])
@@ -131,7 +168,11 @@ def _whatif(scenario: str, reps: int) -> dict:
         res["combo"]["closes_gap"] = bool(res["combo"]["closes_gap"])
     res["scenario"] = scenario
     res["source"] = "whatif"
+    res["twin"] = ctx
     return res
+
+
+_whatif.cache_clear = _whatif_v.cache_clear  # type: ignore[attr-defined]
 
 
 @router.get("/whatif")
@@ -153,39 +194,55 @@ async def stream(scenario: str = "base", seed: int = 7, speed: float = Query(30,
     return StreamingResponse(gen(), media_type="text/event-stream")
 
 
+def futures_payload(scenario: str, action: str, seed: int, at: float | None = None) -> dict:
+    return _futures_v(scenario, action, seed, at, twin_context()["version"])
+
+
 @lru_cache(maxsize=32)
-def futures_payload(scenario: str, action: str, seed: int) -> dict:
+def _futures_v(scenario: str, action: str, seed: int, at: float | None, ver: str) -> dict:
     """Два будущих одной смены: «ничего не делаем» и «вмешиваемся». Одинаковые случайные числа (CRN)."""
     if action not in INTERVENTIONS:
         raise HTTPException(404, f"Нет действия {action}")
     base = run_payload(scenario, seed)
-    run = simulate(INTERVENTIONS[action]["apply"](_scenario(scenario)), seed)
+    run = simulate(apply_action(action, twin_overlay(_scenario(scenario)), at), seed)
     alt = {
         "source": "sim", "scenario": f"{scenario}+{action}", "seed": seed, "horizon": run.horizon,
         "buffer_cap": run.params.buffer_cap, "kpi": kpis(run, IDEAL_LINE_CYCLE), "bottleneck": bottleneck(run),
         "stops": [e for e in run.events if e["type"] == "stop_start"],
         "defects": [e for e in run.events if e["type"] in ("defect", "scrap")], "frames": run.frames,
     }
-    return {"source": "sim", "action": {"id": action, "name": INTERVENTIONS[action]["name"], "detail": INTERVENTIONS[action]["detail"]},
+    return {"source": "sim", "at": at, "action": {"id": action, "name": INTERVENTIONS[action]["name"], "detail": INTERVENTIONS[action]["detail"]},
             "scenario": scenario, "seed": seed, "do_nothing": base, "intervene": alt}
 
 
+futures_payload.cache_clear = _futures_v.cache_clear  # type: ignore[attr-defined]
+
+
+def apply_action(action: str, p, at: float | None = None):
+    """Действие с учётом момента: обслуживание камеры — «сейчас» (в минуту at), а не в зашитую 200-ю."""
+    if action == "paint_service" and at is not None:
+        from .params import service_paint_at
+        return service_paint_at(p, at)
+    return INTERVENTIONS[action]["apply"](p)
+
+
 @router.get("/futures")
-def futures(scenario: str = "paint_degradation", action: str = "paint_service", seed: int = 7) -> dict:
-    return futures_payload(scenario, action, seed)
+def futures(scenario: str = "paint_degradation", action: str = "paint_service", seed: int = 7, at: float | None = Query(None, ge=0, le=930)) -> dict:
+    return futures_payload(scenario, action, seed, round(at) if at is not None else None)
 
 
 PLAN_PER_SHIFT = 120  # факт ТЗ: план 120 машин на линию за смену
 
 
 @lru_cache(maxsize=128)
-def _shift(faults: tuple[str, ...], actions: tuple[str, ...], reps: int) -> dict:
+def _shift(faults: tuple[str, ...], actions: tuple[str, ...], reps: int, ver: str = "") -> dict:
     import numpy as np
     from ..stress import combine
     from .whatif import paired_ci
     seeds = [1000 + i for i in range(reps)]
-    base_p = SCENARIOS["base"]
-    p = combine(list(faults)) if faults else base_p
+    ctx = twin_context()
+    base_p = twin_overlay(SCENARIOS["base"], ctx)
+    p = twin_overlay(combine(list(faults)) if faults else SCENARIOS["base"], ctx)
     for a in actions:
         p = INTERVENTIONS[a]["apply"](p)
     shifts = base_p.horizon / base_p.shift_minutes
@@ -212,7 +269,7 @@ def _shift(faults: tuple[str, ...], actions: tuple[str, ...], reps: int) -> dict
             "faults": [{"id": f, "name": BY_ID[f]["name"]} for f in faults],
             "actions": [{"id": a, "name": INTERVENTIONS[a]["name"], "cost_per_shift": INTERVENTIONS[a]["money"]["month"] / shifts_month,
                          "once": INTERVENTIONS[a]["money"]["once"]} for a in actions],
-            "scenario": f"cfg:{','.join(faults)}|{','.join(actions)}"}
+            "scenario": f"cfg:{','.join(faults)}|{','.join(actions)}", "twin": ctx}
 
 
 @router.get("/shift")
@@ -221,7 +278,7 @@ def shift(faults: str = "", actions: str = "", reps: int = Query(20, ge=2, le=30
     from ..stress import BY_ID
     f = tuple(sorted(i for i in faults.split(",") if i in BY_ID))
     a = tuple(i for i in INTERVENTIONS if i in actions.split(","))
-    return _shift(f, a, reps)
+    return _shift(f, a, reps, twin_context()["version"])
 
 
 @router.get("/options")

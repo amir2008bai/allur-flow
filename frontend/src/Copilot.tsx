@@ -7,7 +7,7 @@ import { ZONE_BY_ID } from './twin/layout'
 import type { ZoneId } from './twin/layout'
 
 // Копилот: вопрос → функции двойника → короткий ответ с источниками; может сам показать участок в 3D.
-interface Reply { answer: string; model: string; mode: 'llm' | 'offline'; sources: string[]; unverified: string[]; actions: { type: string; zone: ZoneId }[]; fallback_reason?: string }
+interface Reply { answer: string; model: string; mode: 'llm' | 'offline'; sources: string[]; unverified: string[]; verified?: { label: string; value: string; note: string }[]; actions: { type: string; zone: ZoneId }[]; fallback_reason?: string }
 interface Msg { role: 'user' | 'assistant'; text: string; meta?: Reply }
 
 const CHIPS = ['Что сейчас происходит?', 'Во что обходится брак окраски?', 'Что сделать, чтобы выполнить план?', 'Почему OEE не считается?']
@@ -87,6 +87,17 @@ export default function Copilot() {
           : (
             <div key={i} className="max-w-[92%]">
               <div className="rounded-2xl rounded-bl-md bg-slate-100 px-3.5 py-2.5 text-sm leading-relaxed text-slate-800"><Rich text={m.text} /></div>
+              {m.meta?.verified && m.meta.verified.length > 0 && (
+                <div className="mt-1.5 divide-y divide-slate-100 rounded-xl bg-white text-xs ring-1 ring-emerald-200">
+                  <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">Цифры из расчёта двойника</div>
+                  {m.meta.verified.map((v) => (
+                    <div key={v.label} className="px-3 py-1.5">
+                      <div className="flex items-baseline justify-between gap-2"><span className="truncate text-slate-700">{v.label}</span><b className="shrink-0 tabular-nums text-slate-900">{v.value}</b></div>
+                      <div className="text-[11px] text-slate-400">{v.note}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
               {m.meta && (
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {m.meta.sources.map((s) => <span key={s} className="rounded-full bg-white px-2 py-0.5 text-[10px] text-slate-500 ring-1 ring-slate-200">{s}</span>)}

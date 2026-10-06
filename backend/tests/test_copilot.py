@@ -24,3 +24,22 @@ def test_offline_paint_focuses_3d():
 def test_api_offline_mode():
     r = TestClient(app).post("/api/copilot", json={"message": "Где узкое место?", "offline": True}).json()
     assert r["mode"] == "offline" and r["sources"]
+
+
+def test_verify_checks_unit_and_sign_not_only_value():
+    # контрпримеры из исследования: число совпадает, но смысл другой (единица, знак, округление)
+    from app.copilot.agent import verify_numbers
+    facts = [{"брак_окраски_pct": 4.5, "прирост_машин_за_смену": -12.4, "годных_за_смену": 116.2}]
+    for wrong in ("брак 116,2%", "прирост +12,4 машины", "прирост +7 машин", "выпуск 116,4 машины"):
+        assert verify_numbers(wrong, facts), wrong
+    assert verify_numbers("Брак 4,5%, годных 116,2 машины, прирост −12,4 машины, около 116 машин", facts) == []
+
+
+def test_verified_card_is_built_by_server_with_honest_status():
+    from app.copilot.agent import verified_facts
+    log = [{"name": "compare_actions", "result": {"лучшая_пара": None, "действия": [
+        {"действие": "A", "прирост_машин_за_смену": 3.1, "интервал_95": [1.0, 5.0]},
+        {"действие": "B", "прирост_машин_за_смену": 0.3, "интервал_95": [-0.4, 1.0]}]}}]
+    v = verified_facts(log)
+    assert "подтверждён" in v[0]["note"] and "через 0" in v[1]["note"]
+    assert verified_facts([{"name": "compare_actions", "result": {"лучшая_пара": None, "действия": []}}])[0]["label"] == "Ничего не менять"

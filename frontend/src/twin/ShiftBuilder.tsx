@@ -7,7 +7,8 @@ import { useView } from './store'
 
 interface Opt { id: string; short: string; name: string; detail: string; do?: string; money?: { month: number; once: number } }
 interface Side { good_per_shift: number; lo: number; hi: number; oee_pct: number; downtime_min: number; paint_defect_pct: number; delta?: number; delta_ci?: [number, number] }
-interface Shift { plan_per_shift: number; normal: Side; forecast: Side; actions: { id: string; cost_per_shift: number; once: number }[]; reps: number }
+interface Shift { plan_per_shift: number; normal: Side; forecast: Side; actions: { id: string; cost_per_shift: number; once: number }[]; reps: number
+  twin?: { learned: boolean; paint_defect_p: number; observations: number; version: string } }
 
 /** Сценарий двойника: cfg:<сбои>|<действия>. Старые имена переводим в новый вид. */
 export function parseCfg(s: string): { faults: string[]; actions: string[] } {
@@ -149,6 +150,9 @@ export default function ShiftBuilder() {
       </div>
 
       <div className="mt-4"><MoneyInputs /></div>
+      {data?.twin?.learned && (
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-emerald-700"><SourceBadge source="feedback" />Двойник учитывает брак окраски {(100 * data.twin.paint_defect_p).toFixed(1).replace('.', ',')}% — уточнён вводом людей и камерой ({data.twin.observations} набл.)</p>
+      )}
       <p className="mt-2 text-xs text-slate-400">Прогноз — среднее по {data?.reps ?? 20} симуляциям смены с одинаковыми случайными событиями: разница возникает только из-за ваших настроек.</p>
     </Card>
   )

@@ -46,31 +46,109 @@ def _models(env: dict) -> list[str]:
     return [main, *fb]
 
 
-NUM_RE = re.compile(r"(?<![\w.])[-−+]?\d+(?:[.,]\d+)?")
+NUM_RE = re.compile(r"(?<![\w.:])([-−+]?)(\d+(?:[.,]\d+)?)(?![\d:])")
+UNIT_WORDS = [("pct", ("%", "процент", "percent", "п.п")), ("money", ("₸", "тг", "тенге", "млн", "млрд", "тыс")),
+              ("cars", ("маш", "авто", "кузов", "car")), ("min", ("мин", "min"))]
+SCALE = {"млрд": 1e9, "млн": 1e6, "тыс": 1e3}
 
 
-def _numbers(text: str) -> set[float]:
-    out = set()
-    for m in NUM_RE.findall(text):
-        try:
-            out.add(round(abs(float(m.replace("−", "-").replace(",", "."))), 1))
-        except ValueError:
-            pass
+def _unit_after(text: str, end: int) -> tuple[str | None, float]:
+    tail = text[end:end + 14].lower().lstrip()
+    for unit, words in UNIT_WORDS:
+        for w in words:
+            if tail.startswith(w):
+                return unit, SCALE.get(w, 1.0)
+    return None, 1.0
+
+
+def _key_unit(key: str) -> str | None:
+    k = key.lower()
+    if "pct" in k or "%" in k or "доля" in k:
+        return "pct"
+    if "тг" in k or "₸" in k or "маржа" in k:
+        return "money"
+    if "мин" in k:
+        return "min"
+    if any(w in k for w in ("машин", "годных", "прирост", "план", "не_хватает", "delta", "good", "интервал", "выпуск")):
+        return "cars"
+    return None
+
+
+def _allowed(obj, key: str = "", out: list | None = None) -> list[tuple[float, str | None]]:
+    """Все числа из результатов функций со знаком и единицей (по имени поля)."""
+    out = [] if out is None else out
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            _allowed(v, f"{key}.{k}", out)
+    elif isinstance(obj, list):
+        for v in obj:
+            _allowed(v, key, out)
+    elif isinstance(obj, bool):
+        pass
+    elif isinstance(obj, (int, float)):
+        out.append((float(obj), _key_unit(key)))
+    elif isinstance(obj, str):
+        for m in NUM_RE.finditer(obj):
+            v = float(m.group(2).replace(",", ".")) * (-1 if m.group(1) in ("-", "−") else 1)
+            out.append((v, _unit_after(obj, m.end())[0] or _key_unit(key)))
     return out
 
 
+def _matches(v: float, decimals: bool, a: float, money: bool) -> bool:
+    if money:
+        return abs(abs(a) - v) <= 0.015 * max(abs(a), 1)
+    if decimals:
+        return abs(abs(a) - v) < 0.051
+    return round(abs(a)) == v or abs(abs(a) - v) < 0.051
+
+
 def verify_numbers(answer: str, tool_results: list[dict]) -> list[str]:
-    """Числа ответа, которых нет в результатах функций (с точностью до 0,1). Мелкие порядковые числа (≤10) не проверяем."""
-    allowed = _numbers(json.dumps(tool_results, ensure_ascii=False))
-    allowed |= {round(x, 0) for x in allowed}
+    """Числа ответа, которых нет в результатах функций с ТЕМ ЖЕ смыслом: значение, единица (машины/%/₸/мин) и знак.
+    Пропускаем только мелкие целые без единицы и знака (порядковые: «2 действия», «3 участка»)."""
+    allowed = _allowed(tool_results)
     bad = []
-    for m in NUM_RE.findall(answer):
-        v = round(abs(float(m.replace("−", "-").replace(",", "."))), 1)
-        if v <= 10 and float(v).is_integer():
+    for m in NUM_RE.finditer(answer):
+        sign, raw = m.group(1), m.group(2)
+        v = float(raw.replace(",", "."))
+        unit, scale = _unit_after(answer, m.end())
+        decimals = "," in raw or "." in raw
+        if not decimals and v <= 10 and unit is None and not sign:
             continue
-        if v not in allowed and round(v, 0) not in allowed:
-            bad.append(m)
+        v *= scale
+        ok = False
+        for a, au in allowed:
+            if unit and au and unit != au:
+                continue
+            if sign == "+" and a < 0 or sign in ("-", "−") and a > 0:
+                continue
+            if _matches(v, decimals and scale == 1, a, unit == "money"):
+                ok = True
+                break
+        if not ok:
+            bad.append(m.group(0).strip())
     return bad
+
+
+def verified_facts(tool_log: list[dict]) -> list[dict]:
+    """Карточка цифр, которую формирует СЕРВЕР из результата расчёта (не из текста ИИ): знак, интервал, статус."""
+    out = []
+    for t in tool_log:
+        r = t.get("result") or {}
+        if t["name"] == "compare_actions":
+            acts = r.get("действия") or []
+            if r.get("лучшая_пара"):
+                lp = r["лучшая_пара"]
+                out.append({"label": " + ".join(lp["действия"]), "value": f"+{_ru(lp['прирост'])} машин/смену", "note": "лучшая пара" + (" · план выполнен" if lp.get("план_выполнен") else "")})
+            for o in acts[:3]:
+                lo, hi = o["интервал_95"]
+                status = "эффект подтверждён" if lo > 0 else "вредит" if hi < 0 else "не подтверждён — интервал проходит через 0"
+                out.append({"label": o["действие"], "value": f"{'+' if o['прирост_машин_за_смену'] >= 0 else '−'}{_ru(abs(o['прирост_машин_за_смену']))} машин/смену",
+                            "note": f"{_ru(lo)}…{_ru(hi)} · {status}"})
+            if not acts:
+                out.append({"label": "Ничего не менять", "value": "0", "note": "ни одно действие не даёт подтверждённого прироста"})
+        elif t["name"] == "get_line_status":
+            out.append({"label": "Годных за смену", "value": f"{_ru(r['годных_за_смену'])} из {r['план_за_смену']}", "note": f"узкое место — {r['узкое_место']}"})
+    return out[:5]
 
 
 def _call_tool(name: str, args: dict) -> dict:
@@ -101,6 +179,7 @@ def ask_llm(question: str, history: list[dict] | None = None) -> dict:
     if not key.startswith("sk-or-"):
         raise RuntimeError("нет ключа OpenRouter")
     errors = []
+    cache: dict[str, dict] = {}   # расчёт отделён от объяснения: сбой модели не повторяет и не теряет расчёт
     for model in _models(env):
         v = CURRENT_VIEW.get() or {}
         ctx = "; ".join(f"{k}: {v[k]}" for k in ("tab", "date", "time", "scenario_name", "selected_zone", "incident", "stress") if v.get(k))
@@ -116,7 +195,8 @@ def ask_llm(question: str, history: list[dict] | None = None) -> dict:
                     if not answer:
                         raise RuntimeError("пустой ответ")
                     return {"answer": answer, "model": model, "mode": "llm", "tools": tool_log, "actions": actions,
-                            "unverified": verify_numbers(answer, [t["result"] for t in tool_log])}
+                            "unverified": verify_numbers(answer, [t["result"] for t in tool_log]), "verified": verified_facts(tool_log),
+                            "tool_calls_computed": len(cache)}
                 messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": calls})
                 for c in calls:
                     name = c["function"]["name"]
@@ -124,7 +204,10 @@ def ask_llm(question: str, history: list[dict] | None = None) -> dict:
                         args = json.loads(c["function"].get("arguments") or "{}")
                     except json.JSONDecodeError:
                         args = {}
-                    res = _call_tool(name, args)
+                    ck = name + json.dumps(args, sort_keys=True, ensure_ascii=False)
+                    if ck not in cache:
+                        cache[ck] = _call_tool(name, args)
+                    res = cache[ck]
                     if isinstance(res, dict) and res.get("action"):
                         actions.append(res["action"])
                     tool_log.append({"name": name, "args": args, "result": res})
@@ -188,7 +271,7 @@ def ask_offline(question: str) -> dict:
         ans = (f"Сейчас линия даёт {_ru(s['годных_за_смену'])} годных за смену при плане {_ru(s['план_за_смену'])}. "
                f"Узкое место — {_ru(s['узкое_место'])} ({_ru(s['узкое_место_доля_времени_pct'])}% времени). Брак окраски {_ru(s['брак_окраски_pct'])}%.")
     return {"answer": ans, "model": "офлайн-шаблон", "mode": "offline", "tools": tools, "actions": actions,
-            "unverified": verify_numbers(ans, [t["result"] for t in tools])}
+            "unverified": verify_numbers(ans, [t["result"] for t in tools]), "verified": verified_facts(tools)}
 
 
 def ask(question: str, history: list[dict] | None = None, offline: bool = False, scenario: str = "paint_degradation",
