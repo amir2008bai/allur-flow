@@ -7,6 +7,7 @@ import type { SimRun } from '../source'
 import { BUFFERS, LINKS, STATE_HEX, STATE_RU, STATUS_HEX, ZONES, ZONE_BY_ID, ZONE_BY_STATION, linkStatus, type Link, type LinkStatus, type StationState, type Zone, type ZoneId } from './layout'
 import { useView } from './store'
 import { useCause } from './useCause'
+import { breathe, damp, easeOutCubic, reducedMotion, smoothstep } from './motion'
 import { CauseBadges, CauseFx3D, CauseProjector } from './CauseFx'
 import { AssemblyLine, PaintBooth, QcArch, Racks, Sedan, WeldRobot } from './models'
 
@@ -19,17 +20,22 @@ function CarBody(props: { position: [number, number, number]; color?: string; sc
   return <Sedan {...props} />
 }
 
+/** Маяк участка: цвет меняется плавно; авария — спокойное «дыхание», а не стробоскоп. */
 function Beacon({ state, y }: { state: StationState; y: number }) {
   const mat = useRef<THREE.MeshStandardMaterial>(null)
-  useFrame(({ clock }) => {
+  const target = useMemo(() => new THREE.Color(STATE_HEX[state]), [state])
+  const still = useMemo(reducedMotion, [])
+  useFrame(({ clock }, dt) => {
     if (!mat.current) return
-    mat.current.emissiveIntensity = state === 'down' ? 1.5 + Math.sin(clock.elapsedTime * 6) * 1.2 : state === 'blocked' ? 1.2 : state === 'working' ? 0.9 : 0.1
+    mat.current.color.lerp(target, Math.min(1, dt * 5)); mat.current.emissive.lerp(target, Math.min(1, dt * 5))
+    const goal = state === 'down' ? 0.6 + (still ? 0.6 : breathe(clock.elapsedTime, 1.6) * 1.4) : state === 'blocked' ? 1.0 : state === 'working' ? 0.8 : 0.08
+    mat.current.emissiveIntensity = damp(mat.current.emissiveIntensity, goal, 8, dt)
   })
   return (
-    <mesh position={[0, y, 0]}>
-      <cylinderGeometry args={[0.28, 0.28, 0.5, 24]} />
-      <meshStandardMaterial ref={mat} color={STATE_HEX[state]} emissive={STATE_HEX[state]} toneMapped={false} />
-    </mesh>
+    <group position={[0, y, 0]}>
+      <mesh><cylinderGeometry args={[0.24, 0.24, 0.42, 48]} /><meshStandardMaterial ref={mat} color={STATE_HEX[state]} emissive={STATE_HEX[state]} roughness={0.3} toneMapped={false} /></mesh>
+      <mesh position={[0, -0.26, 0]}><cylinderGeometry args={[0.27, 0.27, 0.1, 48]} /><meshStandardMaterial color="#3a3f46" roughness={0.45} metalness={0.3} /></mesh>
+    </group>
   )
 }
 
@@ -61,8 +67,9 @@ function StateGlow({ zone, state }: { zone: Zone; state: StationState }) {
   useFrame(({ clock }, dt) => {
     if (!mat.current) return
     mat.current.color.lerp(color, Math.min(1, dt * 4))
-    const base = state === 'starved' ? 0.12 : 0.38
-    mat.current.opacity = base + (state === 'down' ? Math.sin(clock.elapsedTime * 6) * 0.2 : Math.sin(clock.elapsedTime * 2) * 0.06)
+    const base = state === 'starved' ? 0.1 : 0.3
+    const goal = base + (state === 'down' ? breathe(clock.elapsedTime, 1.6) * 0.18 : breathe(clock.elapsedTime, 4) * 0.05)
+    mat.current.opacity = damp(mat.current.opacity, goal, 6, dt)
   })
   return (
     <mesh position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -72,14 +79,35 @@ function StateGlow({ zone, state }: { zone: Zone; state: StationState }) {
   )
 }
 
-/** Кольцо прогресса над кузовом: «здесь сейчас обрабатывается кузов». */
+/** Кольцо прогресса над кузовом (как в Apple Watch): тонкая дорожка и дуга, которая заполняется за цикл. */
+const progressMat = () => new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, toneMapped: false,
+  uniforms: { uProgress: { value: 0 }, uOpacity: { value: 0 }, uColor: { value: new THREE.Color('#22c55e') } },
+  vertexShader: 'varying vec2 vP; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: `varying vec2 vP; uniform float uProgress; uniform float uOpacity; uniform vec3 uColor;
+    void main(){
+      float a = fract(atan(vP.x, vP.y) / 6.2831853 + 1.0);        // 0 — сверху, по часовой
+      float on = step(a, uProgress);
+      vec3 c = mix(vec3(0.86, 0.89, 0.92), uColor, on);
+      float alpha = mix(0.35, 1.0, on) * uOpacity;
+      gl_FragColor = vec4(c, alpha);
+    }`,
+})
+const CYCLE_S = 2.6
 function ProcessRing({ y }: { y: number }) {
-  const ref = useRef<THREE.Mesh>(null)
-  useFrame((_, dt) => { if (ref.current) ref.current.rotation.z -= dt * 2.2 })
+  const mat = useMemo(progressMat, [])
+  const born = useRef<number | null>(null)
+  const still = useMemo(reducedMotion, [])
+  useEffect(() => () => mat.dispose(), [mat])
+  useFrame(({ clock }, dt) => {
+    if (born.current == null) born.current = clock.elapsedTime
+    const p = still ? 0.75 : ((clock.elapsedTime - born.current) % CYCLE_S) / CYCLE_S
+    mat.uniforms.uProgress.value = easeOutCubic(Math.min(1, p / 0.9))   // заполнение с замедлением, короткая пауза в конце
+    mat.uniforms.uOpacity.value = damp(mat.uniforms.uOpacity.value, 0.95, 5, dt)
+  })
   return (
-    <mesh ref={ref} position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-      <torusGeometry args={[1.25, 0.06, 8, 48, Math.PI * 1.4]} />
-      <meshBasicMaterial color="#22c55e" toneMapped={false} />
+    <mesh position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]} material={mat} renderOrder={3}>
+      <ringGeometry args={[1.12, 1.2, 96]} />
     </mesh>
   )
 }
@@ -95,20 +123,31 @@ function FlowLink({ link, status }: { link: Link; status: LinkStatus }) {
   const phase = useRef(Math.random())
   const color = useMemo(() => new THREE.Color(STATUS_HEX[status]), [status])
   const mats = useRef<THREE.MeshBasicMaterial[]>([])
+  const flowOn = useRef(1)
+  const carVis = useRef(0)
   const shape = useMemo(() => {
     const sh = new THREE.Shape()
-    sh.moveTo(-0.5, -0.75); sh.lineTo(0.5, 0); sh.lineTo(-0.5, 0.75); sh.lineTo(-0.1, 0); sh.closePath()
+    sh.moveTo(-0.32, -0.55); sh.lineTo(0.32, 0); sh.lineTo(-0.32, 0.55); sh.lineTo(-0.14, 0); sh.closePath()
     return sh
   }, [])
   const z = link.buffer ? -0.0 : 0
   useFrame((_, dt) => {
     const moving = status === 'flow'
     if (moving) phase.current = (phase.current + dt * 0.45) % 1
-    mats.current.forEach((m) => m && m.color.lerp(color, Math.min(1, dt * 5)))
-    if (arrows.current) arrows.current.children.forEach((c, i) => { c.position.x = x0 + (((i / n + phase.current) % 1) * len) })
+    flowOn.current = damp(flowOn.current, moving ? 1 : 0.45, 3, dt)
+    if (arrows.current) arrows.current.children.forEach((c, i) => {
+      const u = (i / n + phase.current) % 1
+      c.position.x = x0 + u * len
+      const m = mats.current[i]
+      if (m) { m.color.lerp(color, Math.min(1, dt * 5)); m.opacity = 0.85 * flowOn.current * smoothstep(0, 0.15, u) * (1 - smoothstep(0.85, 1, u)) }
+    })
     if (car.current) {
-      car.current.visible = moving && !link.buffer
-      car.current.position.x = x0 + phase.current * len
+      const u = phase.current
+      const show = moving && !link.buffer ? smoothstep(0, 0.08, u) * (1 - smoothstep(0.92, 1, u)) : 0
+      carVis.current = damp(carVis.current, show, 10, dt)
+      car.current.visible = carVis.current > 0.02
+      car.current.scale.setScalar(0.85 + 0.15 * carVis.current)
+      car.current.position.x = x0 + u * len
     }
   })
   const lane = link.buffer ? 4.6 : 0  // у буферов стрелки идут сбоку, чтобы не перекрывать кузова
@@ -118,7 +157,7 @@ function FlowLink({ link, status }: { link: Link; status: LinkStatus }) {
         {Array.from({ length: n }, (_, i) => (
           <mesh key={i} position={[x0, 0.04, lane]} rotation={[-Math.PI / 2, 0, 0]}>
             <shapeGeometry args={[shape]} />
-            <meshBasicMaterial ref={(m) => { if (m) mats.current[i] = m }} color={STATUS_HEX[status]} toneMapped={false} />
+            <meshBasicMaterial ref={(m) => { if (m) mats.current[i] = m }} color={STATUS_HEX[status]} transparent opacity={0} depthWrite={false} toneMapped={false} />
           </mesh>
         ))}
       </group>
@@ -130,8 +169,15 @@ function FlowLink({ link, status }: { link: Link; status: LinkStatus }) {
 /** Кузов в буфере плавно «вырастает» при появлении. */
 function PopCar(props: { position: [number, number, number]; color: string }) {
   const ref = useRef<THREE.Group>(null)
-  useFrame((_, dt) => { if (ref.current && ref.current.scale.x < 1) ref.current.scale.setScalar(Math.min(1, ref.current.scale.x + dt * 4)) })
-  return <group ref={ref} position={props.position} scale={0.01}><CarBody position={[0, 0, 0]} scale={0.55} rotY={0} color={props.color} /></group>
+  const k = useRef(0)
+  useFrame((_, dt) => {
+    if (!ref.current || k.current >= 1) return
+    k.current = Math.min(1, k.current + dt / 0.45)
+    const e = easeOutCubic(k.current)
+    ref.current.scale.setScalar(0.6 + 0.4 * e)
+    ref.current.position.y = props.position[1] + (1 - e) * 0.35   // «опускается» на место
+  })
+  return <group ref={ref} position={props.position} scale={0.6}><CarBody position={[0, 0, 0]} scale={0.55} rotY={0} color={props.color} /></group>
 }
 
 // ── Выделение участка: тонкая светло-голубая рамка по форме участка (как фокус у Apple) ──────────
@@ -139,7 +185,6 @@ const HALO = '#38bdf8'          // sky-400: заметен на белом по�
 const HALO_GAP = 0.45           // отступ рамки от края участка, м
 const HALO_W = 0.09             // толщина линии, м
 const HALO_PERIOD = 2.4         // волна раз в 2,4 с — спокойно, не дёргает внимание
-const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
 /** Контур скруглённого прямоугольника шириной HALO_W (плоский, лежит на полу). */
 function roundedOutline(w: number, d: number, r: number, width: number) {
@@ -224,13 +269,13 @@ function BottleneckMarker({ y }: { y: number }) {
   const ref = useRef<THREE.Mesh>(null)
   useFrame(({ clock }) => {
     if (!ref.current) return
-    ref.current.rotation.y = clock.elapsedTime * 1.5
-    ref.current.position.y = y + Math.sin(clock.elapsedTime * 2) * 0.15
+    ref.current.rotation.y = clock.elapsedTime * 0.5
+    ref.current.position.y = y + Math.sin(clock.elapsedTime * 1.1) * 0.08
   })
   return (
     <mesh ref={ref} position={[0, y, 0]}>
-      <octahedronGeometry args={[0.45]} />
-      <meshStandardMaterial color="#7c3aed" emissive="#7c3aed" emissiveIntensity={1.4} toneMapped={false} />
+      <octahedronGeometry args={[0.38]} />
+      <meshStandardMaterial color="#7c3aed" emissive="#7c3aed" emissiveIntensity={0.9} roughness={0.25} metalness={0.2} flatShading toneMapped={false} />
     </mesh>
   )
 }
@@ -278,7 +323,7 @@ function CameraRig() {
     const tx = cx, ty = 0, tz = z ? z.z : 0
     c.setLookAt(tx + dist * Math.sin(polar) * Math.sin(azim), ty + dist * Math.cos(polar), tz + dist * Math.sin(polar) * Math.cos(azim), tx, ty, tz, true)
   }, [selected, size.width, size.height])
-  return <CameraControls ref={ref} makeDefault minDistance={6} maxDistance={220} maxPolarAngle={Math.PI / 2.15} smoothTime={0.6} />
+  return <CameraControls ref={ref} makeDefault minDistance={6} maxDistance={220} maxPolarAngle={Math.PI / 2.15} smoothTime={0.75} />
 }
 
 const LABEL_Y: Partial<Record<ZoneId, number>> = { paint: 4.9 }
@@ -356,14 +401,14 @@ export default function Scene3D({ run, quality = 'high' }: { run: SimRun; qualit
       {ZONES.map((z) => <ZoneBlock key={z.id} zone={z} frame={frame} bottleneck={z.id === bnZone} />)}
       {BUFFERS.map((b) => <BufferSlots key={b.id} buf={b} level={frame?.buffers[b.id] ?? 0} cap={caps[b.id]} />)}
 
-      <ContactShadows position={[5, 0.01, 0]} scale={120} blur={2.5} far={12} opacity={0.55} resolution={1024} />
+      <ContactShadows position={[5, 0.01, 0]} scale={120} blur={3} far={12} opacity={0.45} resolution={1024} />
       <CameraRig />
       <LabelProjector refs={labelRefs} />
       <CauseFx3D steps={steps} />
       <CauseProjector steps={steps} refs={causeRefs} />
       {quality === 'high' && (
         <EffectComposer multisampling={0}>
-          <N8AO halfRes aoRadius={2.5} intensity={2.5} />
+          <N8AO halfRes aoRadius={2.2} intensity={1.8} />
           <SMAA />
         </EffectComposer>
       )}
