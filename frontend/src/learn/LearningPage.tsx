@@ -18,7 +18,7 @@ function Stat({ label, value, sub, tone }: { label: string; value: ReactNode; su
   return (
     <div className="min-w-0">
       <div className="text-xs text-slate-500">{label}</div>
-      <div className={`mt-1 text-3xl font-semibold tracking-tight tabular-nums ${color}`}>{value}</div>
+      <div className={`mt-1 text-xl font-semibold sm:text-3xl tracking-tight tabular-nums ${color}`}>{value}</div>
       {sub && <div className="mt-0.5 truncate text-xs text-slate-400">{sub}</div>}
     </div>
   )
@@ -81,7 +81,7 @@ function JuryBlock() {
       <Head n={1} title="Люди учат тревоги" sub="Ответ «да/нет» — и ложные тревоги исчезают" badge="feedback" />
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_220px]">
         <div className="min-w-0">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-2 sm:gap-4">
             <Stat label="Точность тревог" value={<>{pct(st.start.precision)} <span className="text-slate-300">→</span> <span className={up ? 'text-emerald-600' : ''}>{pct(st.now.precision)}</span></>} sub="сколько тревог — настоящие" />
             <Stat label="Ложных скрыто" value={st.now.false_suppressed} sub={`из ${st.now.total} проверочных`} tone={st.now.false_suppressed ? 'good' : undefined} />
             <Stat label="Ответов" value={st.votes} sub={st.simulated_votes ? `${st.human_votes} людей · ${st.simulated_votes} симул.` : 'жюри и мастера'} />
@@ -185,7 +185,7 @@ function ForecastBlock() {
   return (
     <Card className="p-6">
       <Head n={2} title="Прогноз учится сам" sub="Прогноз на 2 часа → факт → ошибка → дообучение" badge="forecast" />
-      <div className="mt-6 grid grid-cols-3 gap-4">
+      <div className="mt-6 grid grid-cols-3 gap-2 sm:gap-4">
         <Stat label="Ошибка прогноза" value={`−${Math.round(100 * m.gain_vs_naive)}%`} sub={`чем у простого · ${num(m.mae_after_drift.served)} машины за 2 ч`} tone="good" />
         <Stat label="Попадание в коридор" value={iv ? pct(iv.coverage) : '—'} sub={iv ? `обещаем ${pct(iv.target)} · проверено на фактах` : ''} />
         <Stat label="Сейчас показываем" value={SERVING_RU[last.serving] ?? last.serving} sub="кто точнее на последних фактах" />
@@ -359,7 +359,7 @@ function CalibBlock() {
       <Head n={4} title="Уточните брак окраски" sub="Введите брак за смену — двойник пересчитается" badge="feedback" />
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_260px]">
         <div className="min-w-0">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-2 sm:gap-4">
             <Stat label="Брак окраски" value={pct(c.mean, 1)} sub={`точно от ${pct(c.lo90, 1)} до ${pct(c.hi90, 1)}`} tone={c.mean > st.norm ? 'bad' : 'good'} />
             <Stat label="Переделок за смену" value={num(c.mean * 120)} sub={`при норме — ${num(st.norm * 120)}`} />
             <Stat label="Годных за смену" value={Math.round(c.forecast.good_per_shift)} sub="прогноз двойника" />

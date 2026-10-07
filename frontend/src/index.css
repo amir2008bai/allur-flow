@@ -20,3 +20,13 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 * { -webkit-tap-highlight-color: transparent; }
 button { transition: transform .15s ease, background-color .2s ease, color .2s ease, box-shadow .2s ease; }
 button:active:not(:disabled) { transform: scale(0.97); }
+
+/* Телефон: все нажимаемые элементы не меньше 44 px (рекомендация Apple HIG).
+   В слое base — чтобы явные классы Tailwind могли переопределить. */
+@layer base {
+  @media (max-width: 639px) {
+    button, select, input:not([type=range]):not([type=checkbox]):not([type=radio]) { min-height: 44px; }
+    button { min-width: 44px; }
+    summary { padding-block: 14px; }
+  }
+}

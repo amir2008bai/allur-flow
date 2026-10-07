@@ -2,6 +2,9 @@ import { create } from 'zustand'
 import type { ZoneId } from './layout'
 import { todayISO } from '../dates'
 
+/** Узкий экран (телефон): по умолчанию лёгкий вид «План», а не 3D. */
+export const isPhone = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches
+
 // Только состояние вида: что выбрано, какой момент, какой вид. Сами KPI приходят с сервера.
 interface ViewState {
   selected: ZoneId | null
@@ -35,7 +38,7 @@ export const useView = create<ViewState>((set) => ({
   t: 0,
   playing: false,
   speed: 20,
-  view: '3d',
+  view: isPhone() ? 'plan' : '3d',
   touring: false,
   scenario: 'base',
   setScenario: (scenario) => set({ scenario }),

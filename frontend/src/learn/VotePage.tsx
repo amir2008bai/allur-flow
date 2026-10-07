@@ -28,7 +28,7 @@ export default function VotePage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col px-4 py-6">
+    <div className="mx-auto flex min-h-[100dvh] max-w-md flex-col px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       <div className="flex items-center gap-2.5">
         <div className="grid h-8 w-8 place-items-center rounded-lg bg-slate-900 text-sm font-bold text-white">A</div>
         <div className="leading-tight">

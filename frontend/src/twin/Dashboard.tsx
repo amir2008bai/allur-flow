@@ -42,9 +42,9 @@ export default function Dashboard({ run }: { run: SimRun }) {
   const gap = (lastFrame?.good ?? 0) - planNow
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <Card className="p-5 lg:col-span-2">
-        <div className="flex items-baseline justify-between">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-3">
+      <Card className="min-w-0 p-5 lg:col-span-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
           <h2 className="font-semibold">Выпуск против плана</h2>
           <span className={`text-sm font-semibold tabular-nums ${gap < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
             {clock(t)}: {gap >= 0 ? '+' : ''}{gap} к плану
@@ -52,7 +52,7 @@ export default function Dashboard({ run }: { run: SimRun }) {
         </div>
         <ReactECharts option={option} style={{ height: 220 }} notMerge onEvents={{ click: (p: { value?: [number, number] }) => p.value && setT(p.value[0]) }} />
       </Card>
-      <Card className="flex max-h-[340px] flex-col p-5">
+      <Card className="flex max-h-[340px] min-w-0 flex-col p-5">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-semibold">Журнал событий</h2>
           <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs">

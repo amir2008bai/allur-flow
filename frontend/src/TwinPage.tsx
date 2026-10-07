@@ -89,7 +89,7 @@ export default function TwinPage() {
         <>
           {futures && <Futures scenario={scenario} action={futures} seed={seed} onClose={() => setFutures(null)} />}
           {!futures && <Card className="overflow-hidden">
-            <div className="relative h-[60vh] min-h-[420px] bg-[#f4f5f7]">
+            <div className="relative h-[52vh] min-h-[380px] bg-[#f4f5f7] sm:h-[60vh] sm:min-h-[420px]">
               {view === '3d'
                 ? <ErrorBoundary key={scenario} fallback={<div className="grid h-full place-items-center text-sm text-slate-500">3D недоступно на этом устройстве — откройте 2D-схему</div>}><Suspense fallback={<div className="grid h-full place-items-center text-sm text-slate-500">Загружаю 3D…</div>}><Scene3D run={run} /></Suspense></ErrorBoundary>
                 : view === 'plan' ? <Plan2D run={run} /> : <Flow2D run={run} />}

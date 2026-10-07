@@ -18,7 +18,7 @@ export default function ZonePanel({ run }: { run: SimRun }) {
   const bn = z.station ? run.bottleneck.sole[z.station] + run.bottleneck.shifting[z.station] : 0
 
   return (
-    <div className="absolute right-3 top-3 bottom-3 w-72 overflow-y-auto rounded-2xl bg-white/95 p-5 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+    <div className="absolute left-3 right-3 top-3 bottom-3 overflow-y-auto sm:left-auto sm:w-72 rounded-2xl bg-white/95 p-5 shadow-lg ring-1 ring-slate-200 backdrop-blur">
       <div className="flex items-start justify-between">
         <div>
           <div className="text-lg font-semibold">{z.name}</div>

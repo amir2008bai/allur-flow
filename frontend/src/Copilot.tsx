@@ -1,6 +1,6 @@
 import { Sparkles } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { useView } from './twin/store'
+import { isPhone, useView } from './twin/store'
 import { longDate, seedFromDate } from './dates'
 import { clock } from './twin/Timeline'
 import { ZONE_BY_ID } from './twin/layout'
@@ -57,7 +57,7 @@ export default function Copilot() {
       const focus = r.actions?.find((a) => a.type === 'focus')
       if (focus) {   // ответ двигает сцену: переходим в 3D и подлетаем к участку
         const v = useView.getState()
-        v.setTab('twin'); v.setView('3d'); v.select(focus.zone)
+        v.setTab('twin'); if (!isPhone()) v.setView('3d'); v.select(focus.zone)
       }
     } catch {
       setMsgs((m) => [...m, { role: 'assistant', text: 'Сервер не отвечает.' }])
@@ -65,13 +65,13 @@ export default function Copilot() {
   }
 
   if (!open) return (
-    <button onClick={() => setOpen(true)} className="fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-xl hover:bg-slate-700">
-      <Sparkles size={17} /> Спросить двойник
+    <button onClick={() => setOpen(true)} aria-label="Спросить двойник" className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 z-30 flex h-14 items-center gap-2 rounded-full bg-slate-900 px-4 text-sm sm:right-5 sm:h-auto sm:px-5 sm:py-3 font-semibold text-white shadow-xl hover:bg-slate-700">
+      <Sparkles size={19} /><span className="hidden sm:inline">Спросить двойник</span>
     </button>
   )
 
   return (
-    <div className="fixed bottom-5 right-5 z-30 flex h-[min(620px,80vh)] w-[min(400px,calc(100vw_-_2.5rem))] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
+    <div className="fixed inset-x-2 bottom-2 z-30 flex h-[85dvh] sm:inset-x-auto sm:bottom-5 sm:right-5 sm:h-[min(620px,80vh)] sm:w-[400px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
         <div>
           <div className="flex items-center gap-1.5 font-semibold"><Sparkles size={16} className="text-violet-600" />Помощник смены</div>

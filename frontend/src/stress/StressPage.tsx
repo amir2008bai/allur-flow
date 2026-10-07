@@ -132,7 +132,7 @@ export default function StressPage() {
           </div>
 
           <div className="grid lg:grid-cols-[1fr_340px]">
-            <div className="relative h-[50vh] min-h-[360px] bg-[#f4f5f7]">
+            <div className="relative h-[46vh] min-h-[340px] bg-[#f4f5f7] sm:h-[50vh] sm:min-h-[360px]">
               {view === '3d'
                 ? <ErrorBoundary key={run.seed + s.ids.join()} fallback={<Plan2D run={run} />}><Suspense fallback={null}><Scene3D run={run} /></Suspense></ErrorBoundary>
                 : <Plan2D run={run} />}
@@ -145,7 +145,7 @@ export default function StressPage() {
               </div>
               <CauseBanner run={run} />
               <ZonePanel run={run} />
-              <div className="pointer-events-none absolute left-3 top-3 flex w-60 flex-col gap-1.5 opacity-95">
+              <div className="pointer-events-none absolute left-3 top-3 flex w-[calc(100%-8.5rem)] flex-col sm:w-60 gap-1.5 opacity-95">
                 {shownAlerts.map((a) => (
                   <div key={a.t + a.title} className="animate-[fadein_.3s_ease] rounded-xl bg-white/95 px-3 py-2 shadow-lg ring-1 ring-red-200 backdrop-blur">
                     <div className="flex items-center gap-2 text-xs font-semibold text-red-600"><span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />{clock(a.t)} · {a.title}</div>

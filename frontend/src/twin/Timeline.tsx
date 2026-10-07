@@ -37,17 +37,17 @@ export default function Timeline({ run }: { run: SimRun }) {
   const good = run.frames[Math.min(Math.floor(t), run.frames.length - 1)]?.good ?? 0
 
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-3 sm:flex-nowrap">
       <button onClick={() => { if (t >= H - 1) setT(0); setPlaying(!playing) }}
         className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-900 text-white shadow-sm hover:bg-slate-700" aria-label={playing ? 'Пауза' : 'Пуск'}>
         {playing ? <svg width="14" height="14" viewBox="0 0 14 14"><rect x="2" y="1" width="3.5" height="12" rx="1" fill="currentColor" /><rect x="8.5" y="1" width="3.5" height="12" rx="1" fill="currentColor" /></svg>
           : <svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 1.5v11l9-5.5z" fill="currentColor" /></svg>}
       </button>
-      <div className="w-24 shrink-0">
+      <div className="mr-auto w-24 shrink-0 sm:mr-0">
         <div className="text-lg font-semibold tabular-nums leading-none">{clock(t)}</div>
         <div className="mt-1 text-[11px] text-slate-500">{shortDate(useView.getState().date)} · смена {shift} · {good} годных</div>
       </div>
-      <div className="relative flex-1">
+      <div className="relative order-last basis-full sm:order-none sm:basis-auto sm:flex-1">
         {/* волна узкого места: какой участок ограничивал поток в каждые 10 минут */}
         <div className="mb-1.5 flex h-2 overflow-hidden rounded-full">
           {run.bottleneck.timeline.map((s, i) => (
