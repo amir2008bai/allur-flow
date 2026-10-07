@@ -3,7 +3,7 @@ from functools import lru_cache
 
 from fastapi import APIRouter, HTTPException
 
-from .data_quality import check_frames
+from .data_quality import check_frames, clean_frames
 from .learn.alerts import BUCKET_RU, bucket, detect_run
 from .sim.api import IDEAL_LINE_CYCLE
 from .sim.engine import simulate
@@ -52,8 +52,17 @@ def data_fault(id: str, seed: int = 101) -> dict:
     if id not in names:
         raise HTTPException(404, "нет такого сбоя данных")
     base = simulate(BASE, seed)
-    issues = check_frames(_inject(id, base.frames), BASE.buffer_cap)
-    return {"id": id, "name": names[id], "issues": issues[:8], "count": len(issues)}
+    bad = _inject(id, base.frames)
+    issues = check_frames(bad, BASE.buffer_cap)
+    expect = next(e for k, _, e in DATA_FAULTS if k == id)
+    found = sorted({i["type"] for i in issues})
+    cleaned, removed = clean_frames(bad, BASE.buffer_cap)
+    left = {i["type"] for i in check_frames(cleaned, BASE.buffer_cap)} - {"gap", "stuck"}
+    false_alarm = sorted({i["type"] for i in check_frames(base.frames, BASE.buffer_cap)})
+    return {"id": id, "name": names[id], "issues": issues[:8], "count": len(issues),
+            "detected": bool(expect & set(found)), "expected": sorted(expect), "found": found,
+            "removed": sum(removed.values()), "marked_only": id in ("gap", "stuck"), "clean_ok": not left,
+            "false_alarm_on_clean_data": false_alarm}
 
 
 @lru_cache(maxsize=64)
@@ -69,7 +78,14 @@ def _chaos(key: str, seed: int) -> dict:
         "kpi": kpis(run, IDEAL_LINE_CYCLE), "bottleneck": bottleneck(run),
         "stops": [e for e in run.events if e["type"] == "stop_start"], "frames": run.frames, "alerts": alerts,
         "summary": summary,
+        "stats": _chaos_stats(key),
     }
+
+
+@lru_cache(maxsize=64)
+def _chaos_stats(key: str) -> dict:
+    from .stress import chaos_stats
+    return chaos_stats([i for i in key.split(",") if i in BY_ID])
 
 
 @router.get("/chaos")

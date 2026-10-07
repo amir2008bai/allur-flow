@@ -224,3 +224,34 @@ def chaos(ids: list[str], seed: int) -> dict:
         "faults": sorted(faults, key=lambda f: -f["loss_alone"]),
         "detected": sum(f["detected"] for f in faults),
     }, run
+
+
+def chaos_stats(ids: list[str], seeds=range(201, 241)) -> dict:
+    """Честная оценка «беспредела»: те же сбои в 40 разных сменах (одинаковые случайности с/без сбоев в каждой).
+    Показанная смена — один пример; здесь — среднее, разброс и как часто система замечает каждый сбой."""
+    import numpy as np
+    from .sim.api import IDEAL_LINE_CYCLE
+    from .sim.kpi import kpis
+    p = combine(ids)
+    loss, oee_b, oee_f, good_f, plan_pct = [], [], [], [], []
+    hits = {i: 0 for i in ids}
+    delays = {i: [] for i in ids}
+    for sd in seeds:
+        base, run = simulate(BASE, sd), simulate(p, sd)
+        loss.append(base.good_out - run.good_out); good_f.append(run.good_out)
+        plan_pct.append(100 * run.good_out / 240)
+        oee_b.append(kpis(base, IDEAL_LINE_CYCLE)["oee_pct"]); oee_f.append(kpis(run, IDEAL_LINE_CYCLE)["oee_pct"])
+        alerts = detect_run(run)
+        for i in ids:
+            a, b = BY_ID[i]["window"]
+            hit = [al.t for al in alerts if bucket(al) in EXPECT[i] and a <= al.t <= max(b, a + 90)]
+            if hit:
+                hits[i] += 1; delays[i].append(min(hit) - a)
+    n = len(list(seeds))
+    q = lambda v: [float(np.percentile(v, 10)), float(np.percentile(v, 90))]  # noqa: E731
+    return {"shifts": n, "loss_mean": float(np.mean(loss)), "loss_range": q(loss),
+            "good_mean": float(np.mean(good_f)), "plan_pct_mean": float(np.mean(plan_pct)), "plan_pct_range": q(plan_pct),
+            "oee_base_mean": float(np.mean(oee_b)), "oee_fault_mean": float(np.mean(oee_f)),
+            "detect_rate": {i: hits[i] / n for i in ids},
+            "detect_delay_median": {i: (float(np.median(delays[i])) if delays[i] else None) for i in ids},
+            "detected_mean": float(sum(hits.values()) / n)}

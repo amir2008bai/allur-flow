@@ -20,8 +20,15 @@ interface Summary {
   ids: string[]; good_base: number; good_fault: number; loss: number; loss_pct: number; plan: number; plan_pct_fault: number; plan_pct_base: number
   oee_base: number; oee_fault: number; downtime_base: number; downtime_fault: number; synergy: number; faults: FaultResult[]; detected: number
 }
-interface ChaosRun extends SimRun { summary: Summary; alerts: { t: number; title: string; text: string }[] }
-interface DataResult { id: string; name: string; issues: { type: string; text: string }[]; count: number }
+interface Stats {
+  shifts: number; loss_mean: number; loss_range: [number, number]; good_mean: number; plan_pct_mean: number; plan_pct_range: [number, number]
+  oee_base_mean: number; oee_fault_mean: number; detect_rate: Record<string, number>; detected_mean: number
+}
+interface ChaosRun extends SimRun { summary: Summary; stats?: Stats; alerts: { t: number; title: string; text: string }[] }
+interface DataResult {
+  id: string; name: string; issues: { type: string; text: string }[]; count: number
+  detected?: boolean; removed?: number; marked_only?: boolean; clean_ok?: boolean; false_alarm_on_clean_data?: string[]
+}
 
 const ICON: Record<string, LucideIcon> = { micro_stops: Zap, conveyor_break: Unlink, filter_clog: Wind, parts_shortage: PackageX, quality_burst: Target, shift_change: Users, power_outage: PlugZap }
 function FaultIcon({ id, size = 20, on = true }: { id: string; size?: number; on?: boolean }) {
@@ -91,12 +98,18 @@ export default function StressPage() {
       setData((d) => ({ ...d, [id]: r.data }))
     } catch { /* без сервера и без записи — просто не отмечаем */ }
   }
+  const [breakingAll, setBreakingAll] = useState(false)
+  const breakAll = async () => {
+    setBreakingAll(true)
+    try { await Promise.all((list?.data ?? []).map((d) => breakData(d.id))) } finally { setBreakingAll(false) }
+  }
 
   const shownAlerts = useMemo(() => (run ? run.alerts.filter((a) => a.t <= t).slice(-2).reverse() : []), [run, t])
   const goodNow = run ? run.frames[Math.min(Math.floor(t), run.frames.length - 1)]?.good ?? 0 : 0
 
   if (!list) return <div className="text-sm text-slate-500">Загрузка…</div>
   const s = run?.summary
+  const st = run?.stats
   const maxLoss = s ? Math.max(1, ...s.faults.map((f) => f.loss_alone)) : 1
 
   return (
@@ -139,13 +152,29 @@ export default function StressPage() {
       {run && s && (
         <Card className="scroll-mt-20 overflow-hidden">
           <div id="stress-viewer" />
-          {/* итог: сколько машин потеряли */}
-          <div className="grid gap-3 border-b border-slate-100 p-5 sm:grid-cols-2 lg:grid-cols-4">
-            <Kpi label="Годных за 2 смены" value={`${n0(s.good_fault)}`} sub={`без сбоев было бы ${n0(s.good_base)}`} />
-            <Kpi label="Потеряно" value={`−${n0(s.loss)} ${plural(s.loss)}`} sub={<>−{Math.round(s.loss_pct)}% выпуска · ≈ {tenge(s.loss * margin)} маржи<br />{splitByModel(s.loss, models).map((m) => `${m.model.replace(/^Chevrolet /, '')} ${Math.round(m.n)}`).join(' · ')}</>} tone="bad" />
-            <Kpi label="План 240 за 2 смены" value={`${Math.round(s.plan_pct_fault)}%`} sub={`без сбоев ${Math.round(s.plan_pct_base)}%`} tone={s.plan_pct_fault < 95 ? 'bad' : undefined} />
-            <Kpi label="КПД линии (OEE)" value={`${Math.round(s.oee_fault)}%`} sub={`было ${Math.round(s.oee_base)}% · простоев ${n0(s.downtime_fault)} мин вместо ${n0(s.downtime_base)}`} tone={s.oee_fault < 85 ? 'bad' : undefined} />
-          </div>
+          {/* итог: прогноз по 40 сменам (честно), ниже — одна смена-пример */}
+          {st ? (
+            <div className="border-b border-slate-100 p-5">
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                <div className="text-sm font-semibold">Прогноз: что будет с такими сбоями</div>
+                <div className="text-xs text-slate-500">среднее по {st.shifts} сменам · ниже — одна смена для примера</div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Kpi label="Годных за 2 смены" value={n0(st.good_mean)} sub={`без сбоев было бы ≈ ${n0(st.good_mean + st.loss_mean)} · в примере ${n0(s.good_fault)}`} />
+                <Kpi label="Потеряно" value={`−${n0(st.loss_mean)} ${plural(Math.round(st.loss_mean))}`} tone="bad"
+                  sub={<>обычно {n0(st.loss_range[0])}–{n0(st.loss_range[1])} · в примере −{n0(s.loss)}<br />≈ {tenge(st.loss_mean * margin)} маржи · {splitByModel(Math.round(st.loss_mean), models, true).map((m) => `${m.model.replace(/^Chevrolet /, '')} ${m.n}`).join(' · ')}</>} />
+                <Kpi label="План 240 за 2 смены" value={`${Math.round(st.plan_pct_mean)}%`} sub={`обычно ${Math.round(st.plan_pct_range[0])}–${Math.round(st.plan_pct_range[1])}% · в примере ${Math.round(s.plan_pct_fault)}%`} tone={st.plan_pct_mean < 95 ? 'bad' : undefined} />
+                <Kpi label="КПД линии (OEE)" value={`${Math.round(st.oee_fault_mean)}%`} sub={`без сбоев ${Math.round(st.oee_base_mean)}% · в примере ${Math.round(s.oee_fault)}%`} tone={st.oee_fault_mean < 85 ? 'bad' : undefined} />
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-3 border-b border-slate-100 p-5 sm:grid-cols-2 lg:grid-cols-4">
+              <Kpi label="Годных за 2 смены" value={`${n0(s.good_fault)}`} sub={`без сбоев было бы ${n0(s.good_base)}`} />
+              <Kpi label="Потеряно" value={`−${n0(s.loss)} ${plural(s.loss)}`} sub={`−${Math.round(s.loss_pct)}% выпуска · ≈ ${tenge(s.loss * margin)} маржи`} tone="bad" />
+              <Kpi label="План 240 за 2 смены" value={`${Math.round(s.plan_pct_fault)}%`} sub={`без сбоев ${Math.round(s.plan_pct_base)}%`} tone={s.plan_pct_fault < 95 ? 'bad' : undefined} />
+              <Kpi label="КПД линии (OEE)" value={`${Math.round(s.oee_fault)}%`} sub={`было ${Math.round(s.oee_base)}%`} tone={s.oee_fault < 85 ? 'bad' : undefined} />
+            </div>
+          )}
 
           <div className="grid lg:grid-cols-[1fr_340px]">
             <div className="relative h-[46vh] min-h-[340px] bg-[#f4f5f7] sm:h-[50vh] sm:min-h-[360px]">
@@ -175,7 +204,7 @@ export default function StressPage() {
             <div className="border-t border-slate-100 p-5 lg:border-l lg:border-t-0">
               <div className="flex items-baseline justify-between">
                 <div className="text-sm font-semibold">Что стоило дороже всего</div>
-                <div className="text-xs text-slate-500">замечено {s.detected} из {s.faults.length}</div>
+                <div className="text-right text-xs text-slate-500">в примере замечено {s.detected} из {s.faults.length}{st && <><br />в среднем {st.detected_mean.toFixed(1).replace('.', ',')} из {s.faults.length}</>}</div>
               </div>
               <ul className="mt-3 space-y-3">
                 {s.faults.map((f) => (
@@ -186,7 +215,9 @@ export default function StressPage() {
                       <span className="shrink-0 tabular-nums font-semibold">−{f.loss_alone}</span>
                     </div>
                     <div className="ml-6 mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-red-500" style={{ width: `${(100 * Math.max(0, f.loss_alone)) / maxLoss}%` }} /></div>
-                    <div className="ml-6 mt-0.5 text-[11px] text-slate-400">{f.detected ? `тревога через ${Math.round(f.delay_min ?? 0)} мин` : 'тревоги не было'} · с {clock(f.window[0])}</div>
+                    <div className="ml-6 mt-0.5 text-[11px] text-slate-400">{f.detected ? `тревога через ${Math.round(f.delay_min ?? 0)} мин` : 'тревоги не было'} · с {clock(f.window[0])}
+                      {st && st.detect_rate[f.id] != null && <span className={st.detect_rate[f.id] < 0.95 ? 'text-amber-600' : ''}> · {st.detect_rate[f.id] >= 0.999 ? 'замечается всегда' : `замечен в ${Math.round(st.detect_rate[f.id] * st.shifts)} из ${st.shifts} смен`}</span>}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -210,22 +241,40 @@ export default function StressPage() {
 
       <Card className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <h2 className="font-semibold">Сломайте данные</h2>
-            <p className="text-sm text-slate-500">Как система реагирует на сбои датчиков и связи.</p>
+            <p className="text-sm text-slate-500">Линия работает нормально — ломаются только сигналы с датчиков и связь. Проверяем, что двойник не поверит битым данным. В Двойнике это не показывается: смена там та же.</p>
           </div>
-          <button onClick={() => list.data.forEach((d) => breakData(d.id))} className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"><Bomb size={15} />Сломать всё</button>
+          <button onClick={breakAll} disabled={breakingAll} className="flex shrink-0 items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"><Bomb size={15} />{breakingAll ? 'Ломаю…' : 'Сломать всё'}</button>
         </div>
-        <div className="mt-4 divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
+        {(() => {
+          const done = list.data.filter((d) => data[d.id])
+          if (!done.length) return null
+          const caught = done.filter((d) => data[d.id].detected ?? true).length
+          const falseAlarms = new Set(done.flatMap((d) => data[d.id].false_alarm_on_clean_data ?? []))
+          return (
+            <div className={`mt-4 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-xl px-4 py-3 text-sm ring-1 ${caught === done.length ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : 'bg-amber-50 text-amber-800 ring-amber-200'}`}>
+              <b>Поймано {caught} из {done.length}</b>
+              <span>ложных тревог на чистых данных: {falseAlarms.size}</span>
+              {done.length < list.data.length && <span className="text-slate-500">проверено {done.length} из {list.data.length}</span>}
+            </div>
+          )
+        })()}
+        <div className="mt-3 divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
           {list.data.map((d) => {
             const r = data[d.id]
+            const ok = r ? (r.detected ?? true) : false
+            const action = !r ? '' : r.marked_only ? 'участок данных помечен — расчёты его не используют' : r.removed ? `убрано битых точек: ${r.removed}` : 'значения исправлены'
             return (
               <div key={d.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5">
                 <div className="min-w-0">
-                  <div className="text-sm">{d.name}</div>
-                  {r && <div className="mt-0.5 flex items-center gap-1 text-xs text-emerald-700"><CheckCircle2 size={12} />поймано: {r.issues[0]?.text ?? '—'}{r.count > 1 ? ` (+${r.count - 1})` : ''}</div>}
+                  <div className="flex items-center gap-1.5 text-sm">
+                    {r && (ok ? <CheckCircle2 size={15} className="shrink-0 text-emerald-600" /> : <XCircle size={15} className="shrink-0 text-red-500" />)}
+                    {d.name}
+                  </div>
+                  {r && <div className={`mt-0.5 text-xs ${ok ? 'text-slate-500' : 'text-red-600'}`}>{ok ? <>заметил: {r.issues[0]?.text ?? '—'} · {action}</> : 'не заметил'}</div>}
                 </div>
-                <button onClick={() => breakData(d.id)} className="rounded-lg bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Сломать</button>
+                <button onClick={() => breakData(d.id)} className="rounded-lg bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">{r ? 'Ещё раз' : 'Сломать'}</button>
               </div>
             )
           })}

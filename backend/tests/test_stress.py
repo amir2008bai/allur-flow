@@ -30,3 +30,20 @@ def test_chaos_all_faults():
     assert s["good_fault"] < s["good_base"] and s["loss"] > 0 and s["oee_fault"] < s["oee_base"]
     assert s["detected"] >= len(SCENARIOS) - 1
     assert c.get("/api/sim/run", params={"scenario": "chaos:conveyor_break,power_outage", "seed": 5}).status_code == 200
+
+
+def test_chaos_stats_honest_average_and_detection():
+    # прогноз беспредела — среднее по многим сменам, а не одна смена; пример может отличаться от среднего
+    from app.stress import BY_ID, chaos_stats
+    st = chaos_stats(list(BY_ID), seeds=range(201, 211))
+    assert st["shifts"] == 10 and st["loss_range"][0] <= st["loss_mean"] <= st["loss_range"][1]
+    assert 15 < st["loss_mean"] < 60 and 6 <= st["detected_mean"] <= 7
+    assert all(0 <= v <= 1 for v in st["detect_rate"].values())
+
+
+def test_data_fault_reports_detection_and_action():
+    from app.stress_api import data_fault
+    for k in ("gap", "duplicate", "stuck", "out_of_range", "time_backwards", "outlier"):
+        r = data_fault(k)
+        assert r["detected"] and r["clean_ok"] and r["false_alarm_on_clean_data"] == []
+    assert data_fault("duplicate")["removed"] == 50 and data_fault("gap")["marked_only"]

@@ -63,8 +63,14 @@ export const useMoney = create<Store>((set, get) => ({
 }))
 
 /** Сколько машин каждой модели в N машинах — по доле в плане. */
-export function splitByModel(n: number, models: CarModel[]) {
-  return models.map((m) => ({ model: m.model, n: n * m.share }))
+export function splitByModel(n: number, models: CarModel[], whole = false) {
+  const raw = models.map((m) => ({ model: m.model, n: n * m.share }))
+  if (!whole) return raw
+  // целые машины, сумма ровно n: метод наибольшего остатка
+  const out = raw.map((r) => ({ model: r.model, n: Math.floor(r.n), rest: r.n - Math.floor(r.n) }))
+  let left = Math.round(n) - out.reduce((a, r) => a + r.n, 0)
+  for (const r of [...out].sort((a, b) => b.rest - a.rest)) { if (left <= 0) break; r.n += 1; left -= 1 }
+  return out.map(({ model, n }) => ({ model, n }))
 }
 
 /** Тенге коротко: 1,2 млрд ₸ · 35,4 млн ₸ · 850 тыс. ₸ */

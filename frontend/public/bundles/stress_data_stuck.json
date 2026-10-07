@@ -1,1 +1,1 @@
-{"id":"stuck","name":"Залип датчик буфера (3 ч)","issues":[{"type":"stuck","t":419.0,"text":"датчик буфера «окраска → сборка» не меняется 2 ч, хотя соседние участки работают (залип?)"}],"count":1}
+{"id":"stuck","name":"Залип датчик буфера (3 ч)","issues":[{"type":"stuck","t":419.0,"text":"датчик буфера «окраска → сборка» не меняется 2 ч, хотя соседние участки работают (залип?)"}],"count":1,"detected":true,"expected":["stuck"],"found":["stuck"],"removed":0,"marked_only":true,"clean_ok":true,"false_alarm_on_clean_data":[]}

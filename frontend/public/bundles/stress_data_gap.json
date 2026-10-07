@@ -1,1 +1,1 @@
-{"id":"gap","name":"Пропала связь на 60 мин","issues":[{"type":"gap","t":199.0,"minutes":61.0,"text":"нет данных 61 мин (пропала связь)"}],"count":1}
+{"id":"gap","name":"Пропала связь на 60 мин","issues":[{"type":"gap","t":199.0,"minutes":61.0,"text":"нет данных 61 мин (пропала связь)"}],"count":1,"detected":true,"expected":["gap"],"found":["gap"],"removed":0,"marked_only":true,"clean_ok":true,"false_alarm_on_clean_data":[]}
