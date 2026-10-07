@@ -16,4 +16,4 @@
 3. Открыть http://localhost:5173
 
 Первая установка: `py -3.12 -m venv backend\.venv`, `backend\.venv\Scripts\pip install -r backend\requirements.txt`, `cd frontend && npm ci`.
-Ключ OpenRouter — в файле `.env` (не коммитится).
+Ключ OpenRouter — в файле `.env` (не коммитится): скопируйте `.env.example` в `.env` и впишите свой ключ. Без ключа копилот работает офлайн.
