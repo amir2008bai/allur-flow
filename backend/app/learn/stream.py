@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 
 import numpy as np
@@ -21,6 +21,9 @@ DRIFT_AT = 2 * DAY + 120  # на 3-й день окраска начинает �
 
 EMULATOR = BASE.with_(horizon=DAYS * DAY,
                       degradations=(Degradation("paint", DRIFT_AT, DRIFT_AT + 300, cycle_x=1.18, defect_x=2.3),))
+
+# Признаки «что происходит прямо сейчас» — только для глобальных моделей (онлайн-модели River их не видят)
+NOW_FEATURES = ["down_now", "out_elapsed", "weld_down", "weld_starved_now", "asm_starved_now", "paint_slow"]
 
 FEATURES = ["last_h", "last", "mean4", "buf_wp", "buf_pa", "buf_aq", "paint_work", "paint_down", "asm_down", "asm_starved",
             "paint_defects_60", "shift_pos"]
@@ -44,6 +47,15 @@ class Snapshot:
     t: int
     x: dict
     y: float | None
+    z: dict = field(default_factory=dict)
+
+
+def _state_at(run: RunResult, station: str, c: float) -> tuple[str, float]:
+    """Состояние участка в минуту c и сколько минут оно уже длится."""
+    for s0, s1, st in run.states[station]:
+        if s0 <= c < s1:
+            return st, c - s0
+    return "working", 0.0
 
 
 def interval_snapshots(run: RunResult) -> list[Snapshot]:
@@ -68,5 +80,11 @@ def interval_snapshots(run: RunResult) -> list[Snapshot]:
             "shift_pos": (c % 480) / 480,
         }
         x["last_h"] = float(good[c] - good[c - HORIZON])
-        out.append(Snapshot(t=c, x=x, y=float(good[c + HORIZON] - good[c])))
+        now = {st: _state_at(run, st, c) for st in ("welding", "paint", "assembly", "qc")}
+        downs = [el for st, el in now.values() if st == "down"]
+        z = {"down_now": float(len(downs)), "out_elapsed": float(max(downs) if downs else 0.0),
+             "weld_down": _state_minutes(run, "welding", c - L, c, "down") / L,
+             "weld_starved_now": float(now["welding"][0] == "starved"), "asm_starved_now": float(now["assembly"][0] == "starved"),
+             "paint_slow": float(L / max(1.0, x["last"]) if x["last"] else 0.0) * x["paint_work"]}
+        out.append(Snapshot(t=c, x=x, y=float(good[c + HORIZON] - good[c]), z=z))
     return out

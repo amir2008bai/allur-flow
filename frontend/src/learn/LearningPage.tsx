@@ -217,7 +217,7 @@ function ForecastBlock() {
           <div className="text-sm text-slate-600">из предупреждений сбылось <b className="text-slate-900">{pct(m.dip.precision)}</b></div>
           <div className="text-sm text-slate-600">поймано провалов <b className="text-slate-900">{pct(m.dip.recall)}</b></div>
           <div className="text-sm text-slate-600">различает провал и норму <b className="text-slate-900">{pct(m.dip.auc)}</b></div>
-          <div className="w-full text-[11px] text-slate-400">Провал — меньше {Math.round(100 * m.dip.level)}% нормы за следующие 2 часа (бывает в {pct(m.dip.base_rate)} интервалов). Решают вместе: модель провалов LightGBM и «голоса» LightGBM, TimesFM и Chronos.</div>
+          <div className="w-full text-[11px] text-slate-400">Провал — меньше {Math.round(100 * m.dip.level)}% нормы за следующие 2 часа (бывает в {pct(m.dip.base_rate)} интервалов). Отдельная модель LightGBM смотрит, что происходит сейчас: что стоит, сколько длится поломка, полны ли накопители. Внезапную поломку, которой ещё нет, не предскажет никто — ловятся провалы от уже начавшихся проблем.</div>
         </div>
       )}
       <div className="mt-5">

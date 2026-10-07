@@ -4,40 +4,67 @@
   {
    "version": 1,
    "file": "lgbm_v1.txt",
-   "trained_at": 1791312516.1598723,
+   "trained_at": 1791372860.1246705,
    "runs": 50,
    "rows": 4450,
    "days": 150,
-   "holdout_mae": 2.85928184807083,
+   "seed0": 105000,
+   "holdout_mae": 2.812824127791652,
    "holdout_mae_naive": 4.027450980392157,
-   "seconds": 6.3,
+   "seconds": 8.0,
    "promoted": true,
+   "dip": {
+    "auc": 0.6005226207004951,
+    "brier": 0.13564585305829005,
+    "base_rate": 0.1542483660130719,
+    "precision": 0.4,
+    "recall": 0.16101694915254236
+   },
+   "dip_file": "lgbm_dip_v1.txt",
    "verdict": "стала основной"
   },
   {
    "version": 2,
    "file": "lgbm_v2.txt",
-   "trained_at": 1791312551.329174,
+   "trained_at": 1791372894.6803849,
    "runs": 400,
    "rows": 35600,
    "days": 1200,
-   "holdout_mae": 2.6841722825241554,
+   "seed0": 205000,
+   "holdout_mae": 2.66113254198548,
    "holdout_mae_naive": 4.027450980392157,
-   "seconds": 35.2,
+   "seconds": 34.6,
    "promoted": true,
+   "dip": {
+    "auc": 0.6429151494511828,
+    "brier": 0.12595143470086262,
+    "base_rate": 0.1542483660130719,
+    "precision": 0.5411764705882353,
+    "recall": 0.19491525423728814
+   },
+   "dip_file": "lgbm_dip_v2.txt",
    "verdict": "точнее v1 → стала основной"
   },
   {
    "version": 3,
    "file": "lgbm_v3.txt",
-   "trained_at": 1791312638.6166606,
+   "trained_at": 1791372972.9083154,
    "runs": 1000,
    "rows": 89000,
    "days": 3000,
-   "holdout_mae": 2.6449466999210105,
+   "seed0": 305000,
+   "holdout_mae": 2.610380721202053,
    "holdout_mae_naive": 4.027450980392157,
-   "seconds": 79.3,
+   "seconds": 78.2,
    "promoted": false,
+   "dip": {
+    "auc": 0.6380327718544521,
+    "brier": 0.12436252956649214,
+    "base_rate": 0.1542483660130719,
+    "precision": 0.55,
+    "recall": 0.1864406779661017
+   },
+   "dip_file": "lgbm_dip_v3.txt",
    "verdict": "не точнее v2 на 3% → осталась претендентом"
   }
  ]

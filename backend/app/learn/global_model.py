@@ -23,7 +23,10 @@ import numpy as np
 
 from ..sim.engine import simulate
 from ..sim.params import BASE, STATIONS, Degradation, ForcedDown
-from .stream import FEATURES, HORIZON, emulate, interval_snapshots
+from .stream import FEATURES as BASE_FEATURES
+from .stream import HORIZON, NOW_FEATURES, emulate, interval_snapshots
+
+FEATURES = BASE_FEATURES + NOW_FEATURES
 
 DIR = Path(__file__).resolve().parents[3] / "data" / "models"
 REGISTRY = DIR / "registry.json"
@@ -65,7 +68,7 @@ def random_day(seed: int, days: int = 3):
 
 
 def xy(snaps) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    X = np.array([[s.x[f] for f in FEATURES] for s in snaps], dtype=float)
+    X = np.array([[{**s.x, **s.z}[f] for f in FEATURES] for s in snaps], dtype=float)
     last_h = np.array([s.x["last_h"] for s in snaps], dtype=float)
     y = np.array([s.y for s in snaps], dtype=float)
     return X, y - last_h, last_h

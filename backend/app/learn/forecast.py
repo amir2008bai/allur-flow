@@ -121,12 +121,11 @@ def run_learning(seed: int = 11, n_max: int | None = None, use_tsfm: bool = True
         if s.t in chronos:
             preds["chronos"] = clip(chronos[s.t])
         if use_global:
-            preds["lgbm"] = clip(s.x["last_h"] + global_model.predict(s.x))
-        # риск провала (<80% нормы за 2 ч) — несколько моделей вместе: классификатор LightGBM
-        # и «голоса» прогнозных моделей (LightGBM, TimesFM, Chronos): сколько из них видят провал
-        dip_p = global_model.predict_dip(s.x) if use_global else None
-        votes = [preds[k] < DIP_LEVEL * PLAN for k in ("lgbm", "tsfm", "chronos") if preds.get(k) is not None]
-        dip_risk = (0.6 * dip_p + 0.4 * (sum(votes) / len(votes))) if dip_p is not None and votes else dip_p
+            preds["lgbm"] = clip(s.x["last_h"] + global_model.predict({**s.x, **s.z}))
+        # риск провала (<80% нормы за 2 ч) — отдельная модель LightGBM по признакам «что происходит сейчас».
+        # Проверено: «голоса» TimesFM/Chronos провалы не различают (AUC < 0,5) и только ухудшали риск — не используем.
+        dip_p = global_model.predict_dip({**s.x, **s.z}) if use_global else None
+        dip_risk = dip_p
         ens = _ensemble(preds, errs)
         if ens is not None:
             preds["ens"] = clip(ens)
