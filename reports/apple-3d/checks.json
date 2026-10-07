@@ -1,0 +1,25 @@
+{
+  "initial_pause": true,
+  "selected_pause": true,
+  "playback_moves": true,
+  "performance": {
+    "fps": 39.1,
+    "p95_ms": 41.7
+  },
+  "instant_pause": true,
+  "pause_after_playback": true,
+  "pause_during_camera_flight": true,
+  "tour_paused": true,
+  "speed_300_pause": true,
+  "speed_1200_pause": true,
+  "speed_3600_pause": true,
+  "speed_7200_pause": true,
+  "reduced_motion": true,
+  "incident_pause": true,
+  "futures_pause": true,
+  "phone_defaults_plan": true,
+  "phone_pause": true,
+  "phone_no_overflow": true,
+  "tour_restarts_at_end": true,
+  "browser_errors": []
+}

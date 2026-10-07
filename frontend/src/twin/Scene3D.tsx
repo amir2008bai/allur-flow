@@ -85,7 +85,7 @@ function StateGlow({ zone, state }: { zone: Zone; state: StationState }) {
   )
 }
 
-/** Связь между участками: бегущие стрелки на полу и кузов, который едет к следующему участку. */
+/** Схематические стрелки потока; кузова показаны на участках и в накопителях. */
 function FlowLink({ link, status }: { link: Link; status: LinkStatus }) {
   const x0 = link.from.x + link.from.w / 2 + 0.3
   const x1 = link.to.x - link.to.w / 2 - 0.3

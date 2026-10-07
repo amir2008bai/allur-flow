@@ -1,0 +1,32 @@
+{
+  "before": [
+    {
+      "fps": 28.6,
+      "p95_ms": 48.7,
+      "renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "fps": 28.3,
+      "p95_ms": 55.4,
+      "renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    }
+  ],
+  "after": [
+    {
+      "fps": 36.5,
+      "p95_ms": 41.8,
+      "renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "fps": 39.5,
+      "p95_ms": 41.6,
+      "renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    }
+  ],
+  "phone_low": {
+    "fps": 74.5,
+    "p95_ms": 20.9,
+    "renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+  },
+  "note": "Локальный headless Chrome, 120 requestAnimationFrame; это не проверка заводского ПК или физического телефона."
+}
