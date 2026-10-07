@@ -1,5 +1,6 @@
 // Единая раскладка цеха в метрах — её читают и 3D-сцена, и 2D-схема.
 // Компоновка условная (допущение): реального плана цеха Allur в материалах нет.
+import { STATUS } from '../theme'
 
 export type ZoneId = 'warehouse_in' | 'welding' | 'paint' | 'assembly' | 'qc' | 'warehouse_out'
 export type BufferId = 'b_weld_paint' | 'b_paint_asm' | 'b_asm_qc'
@@ -28,11 +29,11 @@ export const ZONE_BY_STATION = Object.fromEntries(ZONES.filter((z) => z.station)
 export type StationState = 'working' | 'starved' | 'blocked' | 'down'
 export const STATE_RU: Record<StationState, string> = { working: 'работает', starved: 'ждёт кузов', blocked: 'некуда отдать', down: 'стоит' }
 // ISA-101: норма — нейтральная, цвет только для отклонений
-export const STATE_HEX: Record<StationState, string> = { working: '#22c55e', starved: '#cbd5e1', blocked: '#f59e0b', down: '#ef4444' }  // = theme.STATUS
+export const STATE_HEX: Record<StationState, string> = Object.fromEntries(Object.entries(STATUS).map(([key, value]) => [key, value.hex])) as Record<StationState, string>
 
 // Рабочий участок подсвечиваем зелёным (просьба пользователя: видно, где сейчас идёт работа)
-export const WORKING_HEX = '#22c55e'
-export const STATUS_HEX = { flow: '#22c55e', jam: '#f59e0b', stop: '#ef4444', idle: '#b6bec9' } as const
+export const WORKING_HEX = STATUS.working.hex
+export const STATUS_HEX = { flow: STATUS.working.hex, jam: STATUS.blocked.hex, stop: STATUS.down.hex, idle: '#b6bec9' } as const
 export type LinkStatus = keyof typeof STATUS_HEX
 export const LINK_RU: Record<LinkStatus, string> = { flow: 'поток идёт', jam: 'затор', stop: 'стоит', idle: 'ожидание' }
 

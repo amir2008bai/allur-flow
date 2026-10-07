@@ -21,6 +21,7 @@ export default function Timeline({ run }: { run: SimRun }) {
     if (!playing) { last.current = null; return }
     let raf = 0
     const tick = (now: number) => {
+      if (!useView.getState().playing) { last.current = null; return }
       if (last.current !== null) {
         const nt = useView.getState().t + ((now - last.current) / 1000) * useView.getState().speed
         if (nt >= H - 1) { setT(H - 1); setPlaying(false); return }

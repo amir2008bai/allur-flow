@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import ErrorBoundary from './ErrorBoundary'
 import Dashboard from './twin/Dashboard'
 import Flow2D from './twin/Flow2D'
@@ -22,26 +22,48 @@ import { BottleneckBadge, STATUS, StatusLegend } from './theme'
 import { Columns2, Orbit, Square } from 'lucide-react'
 import DatePicker from './DatePicker'
 import { seedFromDate } from './dates'
+import { isPhone } from './twin/store'
+import { useReducedMotion } from './twin/motionPreference'
 const STATE_RU: Record<string, string> = { working: 'работает', starved: 'ждёт кузов', blocked: 'некуда отдать', down: 'стоит' }
 
-function TourButton() {
+function TourButton({ horizon }: { horizon: number }) {
   const touring = useView((v) => v.touring)
   const setTouring = useView((v) => v.setTouring)
+  const playing = useView((v) => v.playing)
+  const reduce = useReducedMotion()
+  const index = useRef(0)
+  const elapsed = useRef(0)
   useEffect(() => {
-    if (!touring) return
-    const order = ZONES.map((z) => z.id)
-    let i = 0
-    useView.getState().select(order[0])
-    const id = setInterval(() => {
-      i += 1
-      if (i >= order.length) { useView.getState().select(null); setTouring(false); return }
-      useView.getState().select(order[i])
-    }, 3200)
-    return () => clearInterval(id)
-  }, [touring, setTouring])
+    if (!touring) { index.current = 0; elapsed.current = 0 }
+  }, [touring])
+  useEffect(() => {
+    if (!touring || !playing || reduce) return
+    let previous = performance.now(), raf = 0
+    const tick = (now: number) => {
+      elapsed.current += Math.min((now - previous) / 1000, 0.1)
+      previous = now
+      if (elapsed.current >= 4) {
+        elapsed.current = 0
+        index.current++
+        if (index.current >= ZONES.length) { useView.getState().select(null); setTouring(false); return }
+        useView.getState().select(ZONES[index.current].id)
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [touring, playing, reduce, setTouring])
   return (
-    <button onClick={() => { if (touring) useView.getState().select(null); setTouring(!touring) }}
-      className="absolute left-3 top-16 rounded-xl bg-white/90 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 backdrop-blur hover:text-slate-900">
+    <button disabled={reduce} title={reduce ? 'Обзор отключён: включено уменьшение движения' : undefined} onClick={() => {
+      if (touring) useView.getState().select(null)
+      else {
+        const state = useView.getState()
+        if (state.t >= horizon - 1) state.setT(0)
+        state.select(ZONES[0].id); state.setPlaying(true)
+      }
+      setTouring(!touring)
+    }}
+      className="absolute left-3 top-16 rounded-xl bg-white/90 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 backdrop-blur hover:text-slate-900 disabled:opacity-50">
       {touring ? <><Square size={14} className="mr-1.5 inline" />Стоп</> : <><Orbit size={15} className="mr-1.5 inline" />Обзор линии</>}
     </button>
   )
@@ -94,7 +116,7 @@ export default function TwinPage() {
           {!futures && <Card className="overflow-hidden">
             <div className="relative h-[52vh] min-h-[380px] bg-[#f4f5f7] sm:h-[60vh] sm:min-h-[420px]">
               {view === '3d'
-                ? <ErrorBoundary key={scenario} fallback={<div className="grid h-full place-items-center text-sm text-slate-500">3D недоступно на этом устройстве — откройте 2D-схему</div>}><Suspense fallback={<div className="grid h-full place-items-center text-sm text-slate-500">Загружаю 3D…</div>}><Scene3D run={run} /></Suspense></ErrorBoundary>
+              ? <ErrorBoundary key={scenario} fallback={<div className="grid h-full place-items-center text-sm text-slate-500">3D недоступно на этом устройстве — откройте 2D-схему</div>}><Suspense fallback={<div className="grid h-full place-items-center text-sm text-slate-500">Загружаю 3D…</div>}><Scene3D run={run} quality={isPhone() ? 'low' : 'high'} /></Suspense></ErrorBoundary>
                 : view === 'plan' ? <Plan2D run={run} /> : <Flow2D run={run} />}
               <div className="absolute left-3 top-3 flex rounded-xl bg-white/90 p-1 shadow-sm ring-1 ring-slate-200 backdrop-blur">
                 {(['3d', 'plan', 'flow'] as const).map((v) => (
@@ -103,7 +125,7 @@ export default function TwinPage() {
                   </button>
                 ))}
               </div>
-              {view === '3d' && <TourButton />}
+              {view === '3d' && <TourButton horizon={run.horizon} />}
               <div className="absolute bottom-3 left-3 rounded-xl bg-white/90 px-3 py-2 shadow-sm ring-1 ring-slate-200 backdrop-blur"><StatusLegend /></div>
               <CauseBanner run={run} />
               <ZonePanel run={run} />

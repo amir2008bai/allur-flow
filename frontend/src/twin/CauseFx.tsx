@@ -4,6 +4,8 @@ import { useMemo, useRef, type MutableRefObject } from 'react'
 import * as THREE from 'three'
 import { ROLE_HEX, ZONE_POS, type CauseStep } from './cause'
 import type { ZoneId } from './layout'
+import { useMotionFrame } from './SceneMotion'
+import { STATUS } from '../theme'
 
 const H = (z: ZoneId) => (z === 'paint' ? 5.2 : 4.2)
 const P = (z: ZoneId, dy = 0) => new THREE.Vector3(ZONE_POS[z].x, H(z) + dy, ZONE_POS[z].z)
@@ -24,24 +26,26 @@ export function causeLinks(steps: CauseStep[]): [CauseStep, CauseStep][] {
   return links
 }
 
-/** Ударная волна от причины: расходящиеся красные кольца. */
+/** Один спокойный импульс при появлении причины, без бесконечной тревожной пульсации. */
 function Shockwave({ zone }: { zone: ZoneId }) {
   const rings = useRef<THREE.Mesh[]>([])
   const z = ZONE_POS[zone]
-  useFrame(({ clock }) => {
+  const born = useRef<number | null>(null)
+  useMotionFrame(({ time, reduced }) => {
+    if (born.current === null) born.current = time
     rings.current.forEach((m, i) => {
       if (!m) return
-      const k = (clock.elapsedTime * 0.6 + i / 3) % 1
-      m.scale.setScalar(1 + k * 2.2)
-      ;(m.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - k)
+      const k = reduced ? 0 : Math.min(1, Math.max(0, (time - born.current! - i * 0.35) / 2.4))
+      m.scale.setScalar(1 + k * 0.35)
+      ;(m.material as THREE.MeshBasicMaterial).opacity = reduced ? 0.1 : 0.2 * (1 - k)
     })
   })
   return (
     <group position={[z.x, 0.06, z.z]} rotation={[-Math.PI / 2, 0, 0]}>
-      {[0, 1, 2].map((i) => (
+      {[0].map((i) => (
         <mesh key={i} ref={(m) => { if (m) rings.current[i] = m }}>
           <ringGeometry args={[Math.max(z.w, z.d) * 0.45, Math.max(z.w, z.d) * 0.5, 64]} />
-          <meshBasicMaterial color="#ef4444" transparent opacity={0.4} toneMapped={false} depthWrite={false} />
+          <meshBasicMaterial color={STATUS.down.hex} transparent opacity={0.2} toneMapped={false} depthWrite={false} />
         </mesh>
       ))}
     </group>
@@ -53,22 +57,26 @@ function Arc({ from, to, color, delay }: { from: ZoneId; to: ZoneId; color: stri
   const a = P(from), b = P(to)
   const mid = useMemo(() => a.clone().lerp(b, 0.5).add(new THREE.Vector3(0, 3 + a.distanceTo(b) * 0.12, 0)), [from, to]) // eslint-disable-line react-hooks/exhaustive-deps
   const curve = useMemo(() => new THREE.QuadraticBezierCurve3(a, mid, b), [mid]) // eslint-disable-line react-hooks/exhaustive-deps
-  const line = useRef<any>(null) // eslint-disable-line @typescript-eslint/no-explicit-any
   const orb = useRef<THREE.Mesh>(null)
   const halo = useRef<THREE.Mesh>(null)
-  useFrame(({ clock }, dt) => {
-    if (line.current?.material) line.current.material.dashOffset -= dt * 2.5
-    const k = ((clock.elapsedTime * 0.55 - delay) % 1 + 1) % 1
-    const p = curve.getPoint(k)
+  const born = useRef<number | null>(null)
+  const p = useMemo(() => new THREE.Vector3(), [])
+  useMotionFrame(({ time, reduced }) => {
+    if (born.current === null) born.current = time
+    const elapsed = time - born.current - delay
+    const k = Math.min(1, Math.max(0, elapsed / 1.5))
+    const visible = !reduced && elapsed >= 0 && elapsed < 1.5
+    curve.getPoint(k, p)
     orb.current?.position.copy(p)
     halo.current?.position.copy(p)
-    if (halo.current) halo.current.scale.setScalar(1 + Math.sin(clock.elapsedTime * 8) * 0.15)
+    if (orb.current) orb.current.visible = visible
+    if (halo.current) halo.current.visible = visible
   })
   return (
     <group>
-      <QuadraticBezierLine ref={line} start={a} end={b} mid={mid} color={color} lineWidth={3} dashed dashScale={2} dashSize={1.2} gapSize={0.8} transparent opacity={0.9} />
-      <mesh ref={orb}><sphereGeometry args={[0.32, 20, 20]} /><meshBasicMaterial color={color} toneMapped={false} /></mesh>
-      <mesh ref={halo}><sphereGeometry args={[0.7, 20, 20]} /><meshBasicMaterial color={color} transparent opacity={0.25} toneMapped={false} depthWrite={false} /></mesh>
+      <QuadraticBezierLine start={a} end={b} mid={mid} color={color} lineWidth={1.5} transparent opacity={0.55} />
+      <mesh ref={orb} visible={false}><sphereGeometry args={[0.2, 12, 12]} /><meshBasicMaterial color={color} toneMapped={false} /></mesh>
+      <mesh ref={halo} visible={false}><sphereGeometry args={[0.4, 12, 12]} /><meshBasicMaterial color={color} transparent opacity={0.12} toneMapped={false} depthWrite={false} /></mesh>
     </group>
   )
 }
@@ -79,7 +87,7 @@ export function CauseFx3D({ steps }: { steps: CauseStep[] }) {
   return (
     <group>
       <Shockwave zone={steps[0].zone} />
-      {causeLinks(steps).map(([f, t], i) => <Arc key={f.zone + t.zone} from={f.zone} to={t.zone} color={ROLE_HEX[t.role]} delay={i * 0.25} />)}
+      {causeLinks(steps).map(([f, t], i) => <Arc key={f.zone + t.zone} from={f.zone} to={t.zone} color={ROLE_HEX[t.role]} delay={i * 0.8} />)}
     </group>
   )
 }
@@ -88,6 +96,7 @@ export function CauseFx3D({ steps }: { steps: CauseStep[] }) {
 export function CauseProjector({ steps, refs }: { steps: CauseStep[]; refs: MutableRefObject<Record<string, HTMLDivElement | null>> }) {
   const v = useMemo(() => new THREE.Vector3(), [])
   useFrame(({ camera, size }) => {
+    camera.updateMatrixWorld()
     for (const s of steps) {
       const el = refs.current[s.zone]
       if (!el) continue

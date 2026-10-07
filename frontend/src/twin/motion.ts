@@ -3,6 +3,9 @@ import * as THREE from 'three'
 
 export const reducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
+/** speed — минут смены в секунду. ×300…×7200 остаются визуально спокойными. */
+export const animationRate = (speed: number) => Math.min(1.35, Math.max(0.65, Math.sqrt(Math.max(0, speed) / 20)))
+
 export const clamp01 = (x: number) => Math.min(1, Math.max(0, x))
 export const easeInOutCubic = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2)
 export const easeOutCubic = (x: number) => 1 - Math.pow(1 - clamp01(x), 3)
