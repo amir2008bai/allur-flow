@@ -1,15 +1,23 @@
 {
- "runs": 10,
+ "runs": 300,
  "device": "cuda",
  "results": {
   "lgbm": {
-   "mae_all": 3.082185168287092,
-   "mae_after_drift": 2.919417262820337
+   "mae_all": 2.647645053238185,
+   "mae_after_drift": 2.5495596441698543
   },
   "lgbm+chronos-2": {
-   "mae_all": 3.0927117827152886,
-   "mae_after_drift": 2.9278662847751753
+   "mae_all": 2.6398447697133482,
+   "mae_after_drift": 2.5245942762696143
+  },
+  "lgbm+timesfm-3.0": {
+   "mae_all": 2.638871708617267,
+   "mae_after_drift": 2.549900717419154
+  },
+  "lgbm+chronos-2+timesfm-3.0": {
+   "mae_all": 2.650715259847629,
+   "mae_after_drift": 2.563005238687064
   }
  },
- "seconds": 7
+ "seconds": 528
 }

@@ -16,7 +16,7 @@ import lightgbm as lgb  # noqa: E402
 
 from app.learn import global_model as g  # noqa: E402
 from app.learn.forecast import _tsfm_predictions  # noqa: E402
-from app.learn.stream import DRIFT_AT, FEATURES, INTERVAL, emulate, interval_snapshots  # noqa: E402
+from app.learn.stream import DRIFT_AT, INTERVAL, emulate, interval_snapshots  # noqa: E402
 from app.sim.engine import simulate  # noqa: E402
 from scripts.tsfm_challengers import STEPS, chronos_predictor, timesfm_predictor  # noqa: E402
 
@@ -53,6 +53,7 @@ def main():
         if i % 25 == 0:
             print(f"{i}/{RUNS} · {time.time() - t0:.0f} с", flush=True)
     X = np.vstack(X); y = np.concatenate(y); F = {m: np.concatenate(v) for m, v in F.items()}
+    np.savez(OUT.with_suffix(".npz"), X=X, y=y, **{k.replace("-", "_"): v for k, v in F.items()})   # чтобы не считать TSFM заново
 
     def holdout(cols):
         errs, errs_after = [], []
@@ -76,7 +77,7 @@ def main():
         if tuple(cols) in boosters:
             continue
         Xa = np.column_stack([X, *[F[c] for c in cols]]) if cols else X
-        boosters[tuple(cols)] = lgb.train(g.PARAMS, lgb.Dataset(Xa, y, feature_name=FEATURES + [f"fc_{c}" for c in cols]), num_boost_round=g.ROUNDS)
+        boosters[tuple(cols)] = lgb.train(g.PARAMS, lgb.Dataset(Xa, y, feature_name=g.FEATURES + [f"fc_{c}" for c in cols]), num_boost_round=g.ROUNDS)
         mae, after = holdout(cols)
         res["+".join(["lgbm", *cols])] = {"mae_all": mae, "mae_after_drift": after}
         print(f"{'+'.join(['lgbm', *cols]):32s} всё {mae:.3f} · после дрейфа {after:.3f}", flush=True)
