@@ -1,13 +1,18 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import FactsPage from './FactsPage'
-import TwinPage from './TwinPage'
-import LearningPage from './learn/LearningPage'
-import VotePage from './learn/VotePage'
 import Copilot from './Copilot'
-import StressPage from './stress/StressPage'
+
+// вкладки грузятся по требованию: первый экран не тянет ECharts, React Flow и 3D
+const TwinPage = lazy(() => import('./TwinPage'))
+const LearningPage = lazy(() => import('./learn/LearningPage'))
+const StressPage = lazy(() => import('./stress/StressPage'))
+const VotePage = lazy(() => import('./learn/VotePage'))
+const Wait = () => <div className="text-sm text-slate-500">Загрузка…</div>
 import { useView } from './twin/store'
 import type { Facts, Finding } from './types'
+import { NeedServer, OfflineStrip, UpdateBanner } from './NetBanners'
+import { useNet } from './net'
 
 const TABS = [
   { id: 'facts', label: 'Факты из ТЗ', short: 'Факты', ready: true },
@@ -17,8 +22,8 @@ const TABS = [
 ]
 
 export default function App() {
-  if (window.location.pathname.startsWith('/vote')) return <VotePage />
-  return <MainApp />
+  if (window.location.pathname.startsWith('/vote')) return <><Suspense fallback={null}><VotePage /></Suspense><UpdateBanner /></>
+  return <><MainApp /><UpdateBanner /></>
 }
 
 function MainApp() {
@@ -27,11 +32,15 @@ function MainApp() {
   const tab = useView((v) => v.tab)
   const setTab = useView((v) => v.setTab)
 
+  const server = useNet((s) => s.server)
+  const loaded = data != null
   useEffect(() => {
-    Promise.all([fetch('/api/facts').then((r) => r.json()), fetch('/api/findings').then((r) => r.json())])
-      .then(([facts, findings]) => setData({ facts, findings }))
-      .catch(() => setError('Сервер не отвечает. Запустите backend (см. README).'))
-  }, [])
+    if (loaded) return
+    const j = (r: Response) => { if (!r.ok) throw new Error(String(r.status)); return r.json() }
+    Promise.all([fetch('/api/facts').then(j), fetch('/api/findings').then(j)])
+      .then(([facts, findings]) => { setData({ facts, findings }); setError(null) })
+      .catch(() => setError('offline'))
+  }, [loaded, server])   // связь появилась — пробуем ещё раз
 
   return (
     <div className="min-h-screen">
@@ -56,14 +65,17 @@ function MainApp() {
           </nav>
           <div className="hidden w-[120px] shrink-0 lg:block" />
         </div>
+        <OfflineStrip />
       </header>
       <main className="mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-6">
         <AnimatePresence mode="wait">
           <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}>
-            {tab === 'twin' && <TwinPage />}
-            {tab === 'learning' && <LearningPage />}
-            {tab === 'stress' && <StressPage />}
-            {tab === 'facts' && error && <div className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+            <Suspense fallback={<Wait />}>
+              {tab === 'twin' && <TwinPage />}
+              {tab === 'learning' && <LearningPage />}
+              {tab === 'stress' && <StressPage />}
+            </Suspense>
+            {tab === 'facts' && error && !data && <NeedServer what="Факты из ТЗ считаются на сервере. Двойник и Испытания работают и без него — на записанных прогонах." />}
             {tab === 'facts' && !data && !error && <div className="text-sm text-slate-500">Загрузка данных…</div>}
             {tab === 'facts' && data && <FactsPage facts={data.facts} findings={data.findings} />}
           </motion.div>

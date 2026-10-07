@@ -11,6 +11,8 @@ import { ZONES } from './twin/layout'
 import Timeline from './twin/Timeline'
 import ZonePanel from './twin/ZonePanel'
 import { useView } from './twin/store'
+import { useNet } from './net'
+import { NeedServer } from './NetBanners'
 
 const Scene3D = lazy(() => import('./twin/Scene3D'))
 import { load, type Mode, type SimMeta, type SimRun, type WhatIf } from './source'
@@ -57,6 +59,7 @@ export default function TwinPage() {
   const view = useView((v) => v.view)
   const [futures, setFutures] = useState<string | null>(null)
   const setView = useView((v) => v.setView)
+  const offline = useNet((s) => s.server === false)
 
   useEffect(() => { load<SimMeta>('/api/sim/meta', '/bundles/meta.json').then((r) => setMeta(r.data)) }, [])
   useEffect(() => {
@@ -110,7 +113,7 @@ export default function TwinPage() {
         </>
       )}
 
-      <div id="shift-builder" className="scroll-mt-20"><ShiftBuilder /></div>
+      <div id="shift-builder" className="scroll-mt-20">{offline ? <NeedServer what="«Смена: план и прогноз» пересчитывается на сервере под выбранные сбои и действия." /> : <ShiftBuilder />}</div>
 
       {run && (
         <>

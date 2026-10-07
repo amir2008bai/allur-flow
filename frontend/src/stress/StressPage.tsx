@@ -3,7 +3,7 @@ import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { splitByModel, tenge, useMoney } from '../money'
 import { ArrowUpRight, Bomb, CheckCircle2, PackageX, PlugZap, RotateCcw, Sparkles, Target, Unlink, Users, Wind, XCircle, Zap, type LucideIcon } from 'lucide-react'
 import ErrorBoundary from '../ErrorBoundary'
-import type { SimRun } from '../source'
+import { load, type Mode, type SimRun } from '../source'
 import Plan2D from '../twin/Plan2D'
 import Timeline, { clock } from '../twin/Timeline'
 import ZonePanel from '../twin/ZonePanel'
@@ -52,16 +52,28 @@ export default function StressPage() {
   const margin = useMoney((m) => m.margin)
   const models = useMoney((m) => m.models)
   const t = useView((v) => v.t)
+  const [mode, setMode] = useState<Mode>('live')
+  const [note, setNote] = useState<string | null>(null)
 
-  useEffect(() => { fetch('/api/stress/scenarios').then((r) => r.json()).then(setList).catch(() => {}) }, [])
+  // без сервера — записанные прогоны (replay): каждый сбой по отдельности и все вместе
+  useEffect(() => { load<NonNullable<typeof list>>('/api/stress/scenarios', '/bundles/stress_scenarios.json').then((r) => { setList(r.data); setMode(r.mode) }).catch(() => {}) }, [])
 
   const toggle = (id: string) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
 
   const start = async () => {
     if (!sel.length) return
-    setBusy(true)
+    setBusy(true); setNote(null)
     try {
-      const r: ChaosRun = await fetch(`/api/stress/chaos?ids=${sel.join(',')}&seed=${seed}`).then((x) => x.json())
+      const all = list != null && sel.length === list.process.length
+      let r: ChaosRun
+      try {
+        const res = await load<ChaosRun>(`/api/stress/chaos?ids=${sel.join(',')}&seed=${seed}`, `/bundles/stress_chaos_${all ? 'all' : sel[0]}.json`, 30000)
+        if (res.mode === 'replay' && !all && sel.length > 1) throw new Error('нет записи')   // запись есть только для одного сбоя или всех сразу
+        r = res.data; setMode(res.mode)
+      } catch {
+        setNote('Нужно подключение к серверу для этого набора. Без сервера есть записанные прогоны: любой сбой по отдельности или «Выбрать все».')
+        return
+      }
       setSeed(seed === 105 ? 101 : seed + 1)
       setRun(r)
       const s = r.summary
@@ -74,8 +86,10 @@ export default function StressPage() {
   }
 
   const breakData = async (id: string) => {
-    const r: DataResult = await fetch(`/api/stress/data?id=${id}`).then((x) => x.json())
-    setData((d) => ({ ...d, [id]: r }))
+    try {
+      const r = await load<DataResult>(`/api/stress/data?id=${id}`, `/bundles/stress_data_${id}.json`)
+      setData((d) => ({ ...d, [id]: r.data }))
+    } catch { /* без сервера и без записи — просто не отмечаем */ }
   }
 
   const shownAlerts = useMemo(() => (run ? run.alerts.filter((a) => a.t <= t).slice(-2).reverse() : []), [run, t])
@@ -119,6 +133,8 @@ export default function StressPage() {
           <Bomb size={16} />{busy ? 'Ломаю линию…' : sel.length > 1 ? 'Устроить беспредел' : 'Устроить сбой'}
         </button>
       </div>
+
+      {note && <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200">{note}</div>}
 
       {run && s && (
         <Card className="scroll-mt-20 overflow-hidden">
@@ -188,7 +204,7 @@ export default function StressPage() {
             </div>
           </div>
           <div className="border-t border-slate-100 px-5 py-4"><Timeline run={run} /></div>
-          <div className="flex items-center justify-between border-t border-slate-100 px-5 py-2 text-[11px] text-slate-400"><span>{run.scenario_name}</span><SourceBadge source="sim" /></div>
+          <div className="flex items-center justify-between border-t border-slate-100 px-5 py-2 text-[11px] text-slate-400"><span>{run.scenario_name}</span><span className="flex items-center gap-2">{mode === 'replay' && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">офлайн-режим · записанный прогон</span>}<SourceBadge source="sim" /></span></div>
         </Card>
       )}
 

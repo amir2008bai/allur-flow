@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, Database, FileUp, RotateCcw, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Card } from './ui'
+import { NEED_SERVER, fromCache, useNet } from './net'
 
 interface Status { file: string; is_test: boolean; rows: Record<string, number>; date_from: string | null; date_to: string | null; warnings: string[]; calibration: { target_per_shift: number; model_per_shift: number } | null }
 interface Preview { file: string; rows: Record<string, number>; date_from: string | null; date_to: string | null; areas: string[]; warnings: string[]; top_findings: { title: string; key: string | null; severity: string }[] }
@@ -15,7 +16,9 @@ export default function DataSource() {
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const input = useRef<HTMLInputElement>(null)
-  useEffect(() => { fetch('/api/data/status').then((r) => r.json()).then(setSt).catch(() => {}) }, [])
+  const server = useNet((s) => s.server)
+  const offline = server === false
+  useEffect(() => { fetch('/api/data/status').then((r) => { if (!r.ok) throw new Error(); if (fromCache(r)) useNet.getState().setServer(false); return r.json() }).then(setSt).catch(() => {}) }, [server])
 
   const pick = async (file: File) => {
     setErr(null); setBusy(true)
@@ -25,19 +28,21 @@ export default function DataSource() {
       const j = await r.json()
       if (!r.ok) throw new Error(j.detail ?? 'Не удалось прочитать файл')
       setPv({ p: j, file })
-    } catch (e) { setErr((e as Error).message) } finally { setBusy(false); if (input.current) input.current.value = '' }
+    } catch (e) { setErr(e instanceof TypeError ? NEED_SERVER : (e as Error).message) } finally { setBusy(false); if (input.current) input.current.value = '' }
   }
   const apply = async () => {
     if (!pv) return
     setBusy(true)
     const fd = new FormData(); fd.append('file', pv.file)
-    const r = await fetch('/api/data/activate', { method: 'POST', body: fd })
-    if (r.ok) window.location.reload()
-    else { setErr((await r.json()).detail); setBusy(false) }
+    try {
+      const r = await fetch('/api/data/activate', { method: 'POST', body: fd })
+      if (r.ok) window.location.reload()
+      else { setErr((await r.json()).detail); setBusy(false) }
+    } catch { setErr(NEED_SERVER); setBusy(false) }
   }
   const reset = async () => { setBusy(true); await fetch('/api/data/reset', { method: 'POST' }); window.location.reload() }
 
-  if (!st) return null
+  if (!st) return offline ? <Card className="p-4 text-sm text-slate-500"><b className="font-semibold text-slate-700">Загрузка данных завода</b> · {NEED_SERVER.toLowerCase()}</Card> : null
   return (
     <Card className="p-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -46,9 +51,9 @@ export default function DataSource() {
           <div className="text-sm font-semibold">{st.is_test ? 'Тестовые данные из ТЗ' : 'Реальные данные завода'}</div>
           <div className="truncate text-xs text-slate-500">{st.file} · {d(st.date_from)} – {d(st.date_to)} · {st.rows.lines} строк работы линий, {st.rows.quality} — качества, {st.rows.downtime} простоев{st.calibration ? ` · двойник подогнан: ${st.calibration.model_per_shift} машин/смену при факте ${st.calibration.target_per_shift}` : ''}</div>
         </div>
-        {!st.is_test && <button disabled={busy} onClick={reset} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-800"><RotateCcw size={14} />Вернуть тестовые</button>}
-        <button disabled={busy} onClick={() => input.current?.click()} className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50">
-          <FileUp size={15} />{busy && !pv ? 'Читаю…' : 'Загрузить данные'}
+        {!st.is_test && <button disabled={busy || offline} onClick={reset} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-800"><RotateCcw size={14} />Вернуть тестовые</button>}
+        <button disabled={busy || offline} title={offline ? NEED_SERVER : undefined} onClick={() => input.current?.click()} className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50">
+          <FileUp size={15} />{offline ? NEED_SERVER : busy && !pv ? 'Читаю…' : 'Загрузить данные'}
         </button>
         <input ref={input} type="file" accept=".xlsx,.xlsm,.docx,.csv" className="hidden" onChange={(e) => e.target.files?.[0] && pick(e.target.files[0])} />
       </div>
@@ -75,7 +80,7 @@ export default function DataSource() {
             <details className="mt-2 text-xs text-amber-700"><summary className="cursor-pointer">Замечания при чтении: {pv.p.warnings.length}</summary><ul className="mt-1 list-disc pl-5">{pv.p.warnings.slice(0, 10).map((w, i) => <li key={i}>{w}</li>)}</ul></details>
           )}
           <div className="mt-4 flex items-center gap-3">
-            <button disabled={busy} onClick={apply} className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 size={16} />{busy ? 'Применяю и калибрую двойник…' : 'Применить'}</button>
+            <button disabled={busy || offline} onClick={apply} className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 size={16} />{busy ? 'Применяю и калибрую двойник…' : 'Применить'}</button>
             <span className="text-xs text-slate-500">Двойник перекалибруется под эти данные: брак и темп участков.</span>
           </div>
         </div>

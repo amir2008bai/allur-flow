@@ -1,0 +1,1 @@
+{"id":"time_backwards","name":"Сбой часов PLC: время назад","issues":[{"type":"time_backwards","t":590.0,"text":"время пошло назад на 9 мин (сбой часов)"}],"count":1}

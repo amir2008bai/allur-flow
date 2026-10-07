@@ -7,6 +7,8 @@ import { addDays, shortDate, todayISO } from '../dates'
 const START = addDays(todayISO(), -4)  // 5 дней потока заканчиваются сегодня
 const dayLabel = (t: number) => shortDate(addDays(START, Math.floor(t / 960)))
 import { Card, SourceBadge } from '../ui'
+import { NeedServer } from '../NetBanners'
+import { useNet } from '../net'
 import { api, pct, type AlertsState, type CalibState, type CameraLog, type ForecastPayload, type GlobalState, type TwinFit } from './api'
 
 const AX = { color: '#94a3b8', fontSize: 10 }
@@ -412,6 +414,9 @@ function CalibBlock() {
 }
 
 export default function LearningPage() {
+  const server = useNet((s) => s.server)
+  // всё обучение (прогнозы, голоса, дообучение) живёт на сервере — без него честно говорим об этом
+  if (server === false) return <NeedServer what="Обучение, голосование и дообучение работают на сервере. Двойник и Испытания доступны и без него." />
   return (
     <div className="space-y-6">
       <JuryBlock />

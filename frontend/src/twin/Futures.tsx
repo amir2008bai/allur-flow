@@ -6,6 +6,8 @@ import CauseBanner from './CauseBanner'
 import Plan2D from './Plan2D'
 import Timeline, { clock } from './Timeline'
 import { useView } from './store'
+import { NeedServer } from '../NetBanners'
+import { useNet } from '../net'
 
 const Scene3D = lazy(() => import('./Scene3D'))
 const plural = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'машину' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'машины' : 'машин')
@@ -15,6 +17,8 @@ interface FuturesPayload { at?: number | null; action: { id: string; name: strin
 /** «Два будущих рядом»: одна и та же смена — без вмешательства и с ним. Одинаковые случайности, общий таймлайн. */
 export default function Futures({ scenario, action, seed = 7, onClose }: { scenario: string; action: string; seed?: number; onClose: () => void }) {
   const [f, setF] = useState<FuturesPayload | null>(null)
+  const [failed, setFailed] = useState(false)
+  const offline = useNet((s) => s.server === false)
   const [view, setView] = useState<'3d' | 'plan'>('plan')
   const t = useView((v) => v.t)
   // «сейчас» = где стоит таймлайн, когда открыли два будущих: обслуживание камеры — в эту минуту
@@ -22,15 +26,16 @@ export default function Futures({ scenario, action, seed = 7, onClose }: { scena
   const at = action === 'paint_service' && now >= 30 && now <= 900 ? now : null
 
   useEffect(() => {
-    setF(null)
-    fetch(`/api/sim/futures?scenario=${encodeURIComponent(scenario)}&action=${action}&seed=${seed}${at != null ? `&at=${at}` : ''}`).then((r) => r.json()).then((d: FuturesPayload) => {
+    setF(null); setFailed(false)
+    fetch(`/api/sim/futures?scenario=${encodeURIComponent(scenario)}&action=${action}&seed=${seed}${at != null ? `&at=${at}` : ''}`).then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.json() }).then((d: FuturesPayload) => {
       setF(d)
       const v = useView.getState()
       v.setPlaying(false); v.setT(at != null ? Math.max(0, at - 20) : 0); v.select(null); v.setSpeed(60)
       setTimeout(() => useView.getState().setPlaying(true), 500)
-    })
+    }).catch(() => setFailed(true))
   }, [scenario, action, seed, at])
 
+  if (!f && (failed || offline)) return <div className="space-y-2"><NeedServer what="«Два будущих» считаются на сервере по выбранной смене." /><button onClick={onClose} className="rounded-xl px-3 py-2 text-sm font-medium text-slate-600 hover:bg-white">← Вернуться к линии</button></div>
   if (!f) return <Card className="grid h-64 place-items-center text-sm text-slate-500">Считаю два будущих…</Card>
   const i = Math.min(Math.floor(t), f.do_nothing.frames.length - 1)
   const a = f.do_nothing.frames[i]?.good ?? 0

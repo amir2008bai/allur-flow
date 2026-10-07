@@ -1,6 +1,7 @@
 import { Sparkles } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { isPhone, useView } from './twin/store'
+import { NEED_SERVER, useNet } from './net'
 import { longDate, seedFromDate } from './dates'
 import { clock } from './twin/Timeline'
 import { ZONE_BY_ID } from './twin/layout'
@@ -36,6 +37,7 @@ export default function Copilot() {
   const [busy, setBusy] = useState(false)
   const scenario = useView((v) => v.scenario)
   const question = useView((v) => v.question)
+  const offline = useNet((s) => s.server === false)
   const end = useRef<HTMLDivElement>(null)
   useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs, busy])
   useEffect(() => {
@@ -47,6 +49,7 @@ export default function Copilot() {
 
   const send = async (text: string, offline: boolean) => {
     if (!text.trim() || busy) return
+    if (offline) { setMsgs((m) => [...m, { role: 'user', text }, { role: 'assistant', text: `${NEED_SERVER}: помощник отвечает по расчётам двойника, а они идут на сервере.` }]); return }
     const history = msgs.slice(-6).map((m) => ({ role: m.role, content: m.text }))
     setMsgs((m) => [...m, { role: 'user', text }])
     setInput('')
@@ -60,7 +63,7 @@ export default function Copilot() {
         v.setTab('twin'); if (!isPhone()) v.setView('3d'); v.select(focus.zone)
       }
     } catch {
-      setMsgs((m) => [...m, { role: 'assistant', text: 'Сервер не отвечает.' }])
+      setMsgs((m) => [...m, { role: 'assistant', text: `${NEED_SERVER}: помощник отвечает по расчётам двойника, а они идут на сервере.` }])
     } finally { setBusy(false) }
   }
 
@@ -118,7 +121,7 @@ export default function Copilot() {
           {CHIPS.map((c) => <button key={c} disabled={busy} onClick={() => send(c, true)} className="whitespace-nowrap rounded-full bg-slate-50 px-3 py-1.5 text-xs text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100 disabled:opacity-50">{c}</button>)}
         </div>
         <form onSubmit={(e) => { e.preventDefault(); send(input, false) }} className="flex gap-2">
-          <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Свой вопрос — ответит ИИ" maxLength={500}
+          <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={offline ? NEED_SERVER : 'Свой вопрос — ответит ИИ'} disabled={offline} maxLength={500}
             className="min-w-0 flex-1 rounded-xl bg-slate-50 px-3 py-2.5 text-sm ring-1 ring-slate-200 outline-none focus:ring-slate-400" />
           <button disabled={busy || !input.trim()} className="rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white disabled:opacity-40">→</button>
         </form>

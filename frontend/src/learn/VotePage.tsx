@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, pct, type Card } from './api'
+import { NEED_SERVER } from '../net'
 
 // Мобильная страница для жюри и мастеров: карточка тревоги → «да» или «нет». Без регистрации.
 function getName() { try { return localStorage.getItem('allur-voter') || '' } catch { return '' } }
@@ -11,8 +12,9 @@ export default function VotePage() {
   const [done, setDone] = useState(0)
   const [toast, setToast] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [offline, setOffline] = useState(false)
 
-  const load = () => api.next().then((r) => setCard(r.card)).catch(() => setCard(null))
+  const load = () => api.next().then((r) => { setCard(r.card); setOffline(false) }).catch(() => { setCard(undefined); setOffline(true) })
   useEffect(() => { load() }, [])
 
   const answer = async (verdict: 'confirm' | 'reject') => {
@@ -24,7 +26,7 @@ export default function VotePage() {
       setToast(`Спасибо! Модель ${st.version} · точность тревог ${pct(st.now.precision)}`)
       setTimeout(() => setToast(null), 2200)
       await load()
-    } finally { setBusy(false) }
+    } catch { setOffline(true) } finally { setBusy(false) }
   }
 
   return (
@@ -41,7 +43,8 @@ export default function VotePage() {
         className="mt-5 rounded-xl bg-white px-4 py-3 text-sm ring-1 ring-slate-200 outline-none focus:ring-slate-400" maxLength={40} />
 
       <div className="mt-5 flex-1">
-        {card === undefined && <div className="text-sm text-slate-500">Загрузка…</div>}
+        {card === undefined && !offline && <div className="text-sm text-slate-500">Загрузка…</div>}
+        {offline && <div className="rounded-2xl bg-white p-6 text-center ring-1 ring-slate-200"><div className="text-lg font-semibold">{NEED_SERVER}</div><div className="mt-1 text-sm text-slate-500">Ответ не отправлен. Проверьте интернет и попробуйте ещё раз.</div><button onClick={load} className="mt-4 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white">Повторить</button></div>}
         {card === null && <div className="rounded-2xl bg-white p-6 text-center ring-1 ring-slate-200"><div className="text-lg font-semibold">Карточки закончились</div><div className="mt-1 text-sm text-slate-500">Спасибо! Вы ответили на {done}.</div></div>}
         {card && (
           <div key={card.id} className="animate-[fadein_.3s_ease] rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
@@ -57,7 +60,7 @@ export default function VotePage() {
         )}
       </div>
 
-      {card && (
+      {card && !offline && (
         <div className="sticky bottom-4 mt-6 grid grid-cols-2 gap-3">
           <button disabled={busy} onClick={() => answer('reject')} className="rounded-2xl bg-white py-4 text-base font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 active:scale-[.98] disabled:opacity-50">✕ Ложная</button>
           <button disabled={busy} onClick={() => answer('confirm')} className="rounded-2xl bg-slate-900 py-4 text-base font-semibold text-white shadow-sm active:scale-[.98] disabled:opacity-50">✓ Да, проблема</button>

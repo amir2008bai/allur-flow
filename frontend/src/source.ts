@@ -1,4 +1,6 @@
 // Источник данных двойника: живой сервер или записанные прогоны (replay) — если сервер недоступен.
+import { useNet } from './net'
+
 export type Mode = 'live' | 'replay'
 
 async function withTimeout(url: string, ms = 2500): Promise<Response> {
@@ -15,7 +17,10 @@ async function withTimeout(url: string, ms = 2500): Promise<Response> {
 
 export async function load<T>(live: string, replay: string, liveTimeoutMs?: number): Promise<{ data: T; mode: Mode }> {
   try {
-    return { data: (await (await withTimeout(live, liveTimeoutMs)).json()) as T, mode: 'live' }
+    if (useNet.getState().server === false) throw new Error('offline')   // уже знаем, что сервера нет — не ждём отказа соединения
+    const r = await withTimeout(live, liveTimeoutMs)
+    // сохранённый сервис-воркером ответ — это не живой сервер: честно показываем «офлайн-режим»
+    return { data: (await r.json()) as T, mode: r.headers.get('X-Allur-Offline') === '1' ? 'replay' : 'live' }
   } catch {
     return { data: (await (await fetch(replay)).json()) as T, mode: 'replay' }
   }
