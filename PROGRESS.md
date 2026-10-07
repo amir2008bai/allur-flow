@@ -250,3 +250,10 @@
 - **Скорость**: вкладки Двойник/Обучение/Испытания/`/vote` грузятся лениво. Первый экран: ~130 КБ сжатого JS вместо ~850. Lighthouse (мобильный, через FastAPI): Performance 51 → **97** (FCP 15 с → 1,8 с), Accessibility 94, Best practices 100.
 - Проверено в Chrome (Playwright, 375×812 и 430×932): установка, офлайн при выключенном бэкенде (Факты из сохранённой копии, Двойник и Испытания из replay), плашка обновления, нет горизонтальной прокрутки, десктоп 1440 и 3D не сломаны.
 - Грабли: replay «Испытаний» записан для одного seed — при повторных запусках без сервера цифры те же (это запись). При первом открытии без сети приложение не откроется — SW ставится при первом визите онлайн.
+
+## 2026-10-07 · Сессия 5 · 5.9e Docker Compose + инструкция деплоя
+- `Dockerfile` (multi-stage): `node:22-alpine` собирает фронт (`npm ci`, `npm run build`) → `python:3.12-slim` + `requirements.txt` (+ `libgomp1` для LightGBM). `requirements-ai.txt` (PyTorch) не ставим. В образ — только данные из git (`data/raw`, `data/models`, `tsfm_results.json`, `stack_results.json`); `.dockerignore` отсекает `.env`, `data/uploads/`, `active_dataset.json`, SQLite. Запуск не от root, healthcheck по `/api/health`.
+- `docker-compose.yml`: `app` (том `allur-data:/app/data` — голоса, калибровка, версии моделей, загрузки) + `caddy` (`deploy/Caddyfile`: HTTPS, zstd/gzip, `flush_interval -1` для SSE). Ключи — через `env_file: .env` (код копилота берёт `OPENROUTER*` и из окружения). Домен — `ALLUR_DOMAIN` (по умолчанию localhost).
+- **Не проверено в Docker**: на этой машине Docker не установлен. Проверено только, что сервер стартует так же, как в контейнере (`uvicorn app.main:app --app-dir backend` из корня + `ALLUR_FRONTEND_DIST`): `/api/health`, `/vote`, `/api/facts` отвечают. Первым делом на машине с Docker: `docker compose up -d --build` → https://localhost.
+- README: сборка, установка PWA (Chrome/Android/iPhone), офлайн, Docker, пошаговый деплой. Сам деплой не делали — нужно разрешение владельца.
+- Грабли: PWA с телефона по `http://192.168.x.x` не установится (нужен HTTPS) — для демо с телефонов нужен Docker+Caddy с доменом или туннель.

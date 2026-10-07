@@ -1,0 +1,34 @@
+# Запуск: docker compose up -d --build   → https://<ALLUR_DOMAIN> (по умолчанию https://localhost)
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - path: .env          # ключ OpenRouter и др.; без файла копилот работает офлайн
+        required: false
+    volumes:
+      - allur-data:/app/data   # голоса, калибровка, версии моделей, загруженные данные — переживают перезапуск
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      ALLUR_DOMAIN: ${ALLUR_DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data       # сертификаты HTTPS
+      - caddy-config:/config
+
+volumes:
+  allur-data:
+  caddy-data:
+  caddy-config:

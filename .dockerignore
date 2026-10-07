@@ -1,0 +1,14 @@
+# секреты и данные завода никогда не попадают в образ
+.env
+data/uploads/
+data/active_dataset.json
+data/*.sqlite*
+data/*.npz
+**/.venv/
+**/node_modules/
+**/__pycache__/
+**/.pytest_cache/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+.git/
+reports/

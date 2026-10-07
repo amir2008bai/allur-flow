@@ -1,0 +1,15 @@
+# HTTPS для PWA (service worker работает только по HTTPS или на localhost).
+# ALLUR_DOMAIN=localhost — локальный сертификат Caddy; настоящий домен — сертификат Let's Encrypt автоматически.
+{$ALLUR_DOMAIN:localhost} {
+	encode zstd gzip
+	reverse_proxy app:8000 {
+		# поток /api/sim/stream (SSE) без буферизации
+		flush_interval -1
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}
