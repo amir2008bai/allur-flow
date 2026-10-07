@@ -134,6 +134,66 @@ function PopCar(props: { position: [number, number, number]; color: string }) {
   return <group ref={ref} position={props.position} scale={0.01}><CarBody position={[0, 0, 0]} scale={0.55} rotY={0} color={props.color} /></group>
 }
 
+// ── Выделение участка: тонкая светло-голубая рамка по форме участка (как фокус у Apple) ──────────
+const HALO = '#38bdf8'          // sky-400: заметен на белом полу, не спорит со статусами (зелёный/жёлтый/красный)
+const HALO_GAP = 0.45           // отступ рамки от края участка, м
+const HALO_W = 0.09             // толщина линии, м
+const HALO_PERIOD = 2.4         // волна раз в 2,4 с — спокойно, не дёргает внимание
+const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+
+/** Контур скруглённого прямоугольника шириной HALO_W (плоский, лежит на полу). */
+function roundedOutline(w: number, d: number, r: number, width: number) {
+  const rect = (hw: number, hd: number, rr: number) => {
+    const p = new THREE.Path()
+    p.moveTo(-hw + rr, -hd); p.lineTo(hw - rr, -hd); p.quadraticCurveTo(hw, -hd, hw, -hd + rr)
+    p.lineTo(hw, hd - rr); p.quadraticCurveTo(hw, hd, hw - rr, hd); p.lineTo(-hw + rr, hd)
+    p.quadraticCurveTo(-hw, hd, -hw, hd - rr); p.lineTo(-hw, -hd + rr); p.quadraticCurveTo(-hw, -hd, -hw + rr, -hd)
+    return p
+  }
+  const shape = new THREE.Shape(rect(w / 2 + width, d / 2 + width, r + width).getPoints(12))
+  shape.holes.push(rect(w / 2, d / 2, r))
+  return new THREE.ShapeGeometry(shape, 12)
+}
+
+function SelectionHalo({ w, d }: { w: number; d: number }) {
+  const geo = useMemo(() => roundedOutline(w + 2 * HALO_GAP, d + 2 * HALO_GAP, 0.55, HALO_W), [w, d])
+  const main = useRef<THREE.Mesh>(null)
+  const wave = useRef<THREE.Mesh>(null)
+  const born = useRef<number | null>(null)
+  const still = useMemo(reducedMotion, [])
+  useEffect(() => () => geo.dispose(), [geo])
+  useFrame(({ clock }) => {
+    const t = clock.elapsedTime
+    if (born.current == null) born.current = t
+    // появление: 0,35 с, мягкое замедление (ease-out cubic), чуть «вырастает» к участку
+    const k = still ? 1 : Math.min(1, (t - born.current) / 0.35)
+    const e = 1 - Math.pow(1 - k, 3)
+    if (main.current) {
+      main.current.scale.setScalar(1.04 - 0.04 * e)
+      ;(main.current.material as THREE.MeshBasicMaterial).opacity = 0.9 * e
+    }
+    // волна: расходится и тает за 70% периода, потом пауза (рамка лежит в плоскости XY группы → масштаб по x и y)
+    if (wave.current) {
+      const p = still ? 1 : ((t - born.current) % HALO_PERIOD) / HALO_PERIOD
+      const q = Math.min(1, p / 0.7)
+      const eq = 1 - Math.pow(1 - q, 2)
+      const grow = 0.45 * eq   // волна уходит наружу на 45 см — одинаково по всем сторонам
+      wave.current.scale.set(1 + (2 * grow) / (w + 2 * HALO_GAP), 1 + (2 * grow) / (d + 2 * HALO_GAP), 1)
+      ;(wave.current.material as THREE.MeshBasicMaterial).opacity = still ? 0 : 0.35 * (1 - q) * e
+    }
+  })
+  return (
+    <group position={[0, 0.215, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh ref={main} geometry={geo} renderOrder={2}>
+        <meshBasicMaterial color={HALO} transparent opacity={0} toneMapped={false} depthWrite={false} />
+      </mesh>
+      <mesh ref={wave} geometry={geo} renderOrder={1}>
+        <meshBasicMaterial color={HALO} transparent opacity={0} toneMapped={false} depthWrite={false} />
+      </mesh>
+    </group>
+  )
+}
+
 function ZoneBlock({ zone, frame, bottleneck }: { zone: Zone; frame: Frame | undefined; bottleneck: boolean }) {
   const selected = useView((s) => s.selected === zone.id)
   const select = useView((s) => s.select)
@@ -146,12 +206,7 @@ function ZoneBlock({ zone, frame, bottleneck }: { zone: Zone; frame: Frame | und
         onPointerOver={() => (document.body.style.cursor = 'pointer')} onPointerOut={() => (document.body.style.cursor = '')}>
         <meshStandardMaterial color={selected ? '#ffffff' : '#f6f7f9'} roughness={0.85} />
       </RoundedBox>
-      {selected && (
-        <mesh position={[0, 0.21, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[Math.max(zone.w, zone.d) * 0.62, Math.max(zone.w, zone.d) * 0.64, 64]} />
-          <meshBasicMaterial color="#0f172a" />
-        </mesh>
-      )}
+      {selected && <SelectionHalo w={zone.w} d={zone.d} />}
       {state && <StateGlow zone={zone} state={state} />}
       <Equipment zone={zone} state={state} />
       {hasBody && <CarBody position={[0, zone.id === 'assembly' ? 0.6 : 0.2, 0]} color={zone.id === 'welding' ? '#c9ced6' : PAINTED} />}
