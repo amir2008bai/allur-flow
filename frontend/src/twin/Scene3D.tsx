@@ -327,10 +327,9 @@ function BufferSlots({ buf, level, cap }: { buf: (typeof BUFFERS)[number]; level
   )
 }
 
-/** Сохраняет текущую позицию и незавершённый перелёт при паузе. */
+/** Камера управляется вручную даже на паузе; оборудование использует отдельный таймер. */
 class SceneCameraControls extends CameraControlsImpl {
   update(dt: number) {
-    if (!useView.getState().playing || reducedMotion()) return false
     return super.update(Math.min(dt, 0.05))
   }
   applyStaticView() { return super.update(0) }
@@ -339,9 +338,10 @@ class SceneCameraControls extends CameraControlsImpl {
 function CameraRig() {
   const ref = useRef<CameraControls>(null)
   const selected = useView((s) => s.selected)
-  const playing = useView((s) => s.playing)
   const reduce = useReducedMotion()
   const size = useThree((s) => s.size)
+  const zoomStep = useView((s) => s.cameraZoomStep)
+  const lastZoom = useRef(zoomStep)
   useEffect(() => {
     const c = ref.current
     if (!c) return
@@ -362,7 +362,16 @@ function CameraRig() {
     c.setLookAt(tx + dist * Math.sin(polar) * Math.sin(azim), ty + dist * Math.cos(polar), tz + dist * Math.sin(polar) * Math.cos(azim), tx, ty, tz, animate)
     if (!animate) (c as SceneCameraControls).applyStaticView()
   }, [selected, size.width, size.height])
-  return <CameraControls impl={SceneCameraControls} ref={ref} enabled={playing && !reduce} makeDefault minDistance={6} maxDistance={220} maxPolarAngle={Math.PI / 2.15} smoothTime={0.85} />
+  useEffect(() => {
+    const steps = zoomStep - lastZoom.current
+    lastZoom.current = zoomStep
+    const c = ref.current
+    if (!c || !steps) return
+    // Масштаб относительно текущего расстояния, с прежними пределами камеры.
+    c.dolly(c.distance * (1 - Math.pow(0.8, steps)), !reduce)
+    if (reduce) (c as SceneCameraControls).applyStaticView()
+  }, [zoomStep, reduce])
+  return <CameraControls impl={SceneCameraControls} ref={ref} enabled onControlStart={() => useView.getState().setTouring(false)} makeDefault minDistance={6} maxDistance={220} maxPolarAngle={Math.PI / 2.15} smoothTime={0.85} />
 }
 
 const LABEL_Y: Partial<Record<ZoneId, number>> = { paint: 4.9 }

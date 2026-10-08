@@ -1,8 +1,8 @@
 import type { SimRun } from '../source'
-import { BUFFERS, STATE_HEX, STATE_RU, ZONE_BY_ID, type StationState } from './layout'
+import { BUFFERS, STATE_HEX, STATE_RU, ZONES, ZONE_BY_ID, type StationState } from './layout'
 import { useView } from './store'
 import { clock } from './Timeline'
-import { Sparkles } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
 
 export default function ZonePanel({ run }: { run: SimRun }) {
   const selected = useView((s) => s.selected)
@@ -10,6 +10,10 @@ export default function ZonePanel({ run }: { run: SimRun }) {
   const t = useView((s) => s.t)
   if (!selected) return null
   const z = ZONE_BY_ID[selected]
+  const index = ZONES.findIndex((zone) => zone.id === selected)
+  const previous = ZONES[(index - 1 + ZONES.length) % ZONES.length]
+  const next = ZONES[(index + 1) % ZONES.length]
+  const goTo = (id: typeof selected) => { useView.getState().setTouring(false); select(id) }
   const frame = run.frames[Math.min(Math.floor(t), run.frames.length - 1)]
   const st = z.station ? (frame.states[z.station] as StationState) : null
   const before = BUFFERS.find((b) => b.to === z.id)
@@ -25,6 +29,17 @@ export default function ZonePanel({ run }: { run: SimRun }) {
           {z.equipment.length > 0 && <div className="text-xs text-slate-500">{z.equipment.join(' · ')}</div>}
         </div>
         <button onClick={() => select(null)} className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Закрыть">✕</button>
+      </div>
+
+      <div className="mt-3 flex gap-2" aria-label="Переключение участков">
+        <button onClick={() => goTo(previous.id)} aria-label={`Предыдущий участок: ${previous.name}`} title={previous.name}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-50 px-2 text-xs font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-sky-500">
+          <ChevronLeft size={17} className="shrink-0" /><span className="truncate">{previous.short}</span>
+        </button>
+        <button onClick={() => goTo(next.id)} aria-label={`Следующий участок: ${next.name}`} title={next.name}
+          className="flex min-h-11 min-w-0 flex-1 items-center justify-end gap-1 rounded-xl bg-slate-50 px-2 text-xs font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-sky-500">
+          <span className="truncate">{next.short}</span><ChevronRight size={17} className="shrink-0" />
+        </button>
       </div>
 
       {st && (

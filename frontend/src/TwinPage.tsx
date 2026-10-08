@@ -25,7 +25,7 @@ import { load, type Mode, type SimMeta, type SimRun, type WhatIf } from './sourc
 import { Card, SourceBadge } from './ui'
 
 import { BottleneckBadge, STATUS, StatusLegend } from './theme'
-import { CalendarDays, Columns2, Orbit, ShieldCheck, Square } from 'lucide-react'
+import { CalendarDays, Columns2, Minus, Orbit, Plus, ShieldCheck, Square } from 'lucide-react'
 import DatePicker from './DatePicker'
 import { seedFromDate } from './dates'
 import { isPhone } from './twin/store'
@@ -73,6 +73,16 @@ function TourButton({ horizon }: { horizon: number }) {
       {touring ? <><Square size={14} className="mr-1.5 inline" />Стоп</> : <><Orbit size={15} className="mr-1.5 inline" />Обзор линии</>}
     </button>
   )
+}
+
+function ZoomButtons() {
+  const zoom = useView((v) => v.zoomCamera)
+  return <div className="absolute left-3 top-28 flex gap-1 rounded-xl bg-white/90 p-1 shadow-sm ring-1 ring-slate-200 backdrop-blur">
+    <button onClick={() => zoom(1)} aria-label="Приблизить" title="Приблизить"
+      className="grid h-10 w-10 place-items-center rounded-lg text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-sky-500"><Plus size={19} /></button>
+    <button onClick={() => zoom(-1)} aria-label="Отдалить" title="Отдалить"
+      className="grid h-10 w-10 place-items-center rounded-lg text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-sky-500"><Minus size={19} /></button>
+  </div>
 }
 
 export default function TwinPage() {
@@ -134,7 +144,7 @@ export default function TwinPage() {
                   </button>
                 ))}
               </div>
-              {view === '3d' && <TourButton horizon={run.horizon} />}
+              {view === '3d' && <><TourButton horizon={run.horizon} /><ZoomButtons /></>}
               <div className="absolute bottom-3 left-3 rounded-xl bg-white/90 px-3 py-2 shadow-sm ring-1 ring-slate-200 backdrop-blur"><StatusLegend /></div>
               <CauseBanner run={run} />
               <ZonePanel run={run} />

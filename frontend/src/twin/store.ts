@@ -18,6 +18,8 @@ interface ViewState {
   setSpeed: (s: number) => void
   setView: (v: '3d' | 'plan' | 'flow') => void
   touring: boolean
+  cameraZoomStep: number
+  zoomCamera: (step: -1 | 1) => void
   setTouring: (t: boolean) => void
   scenario: string
   setScenario: (s: string) => void
@@ -40,6 +42,8 @@ export const useView = create<ViewState>((set) => ({
   speed: 20,
   view: isPhone() ? 'plan' : '3d',
   touring: false,
+  cameraZoomStep: 0,
+  zoomCamera: (step) => set((state) => ({ cameraZoomStep: state.cameraZoomStep + step, touring: false })),
   scenario: 'base',
   setScenario: (scenario) => set({ scenario }),
   tab: 'facts',
