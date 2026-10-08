@@ -7,6 +7,7 @@ import Copilot from './Copilot'
 const TwinPage = lazy(() => import('./TwinPage'))
 const LearningPage = lazy(() => import('./learn/LearningPage'))
 const StressPage = lazy(() => import('./stress/StressPage'))
+const BriefingPage = lazy(() => import('./BriefingPage'))
 const VotePage = lazy(() => import('./learn/VotePage'))
 const Wait = () => <div className="text-sm text-slate-500">Загрузка…</div>
 import { useView } from './twin/store'
@@ -16,6 +17,7 @@ import { useNet } from './net'
 
 const TABS = [
   { id: 'facts', label: 'Факты из ТЗ', short: 'Факты', ready: true },
+  { id: 'briefing', label: 'Брифинг', ready: true },
   { id: 'twin', label: 'Двойник', ready: true },
   { id: 'learning', label: 'Обучение', ready: true },
   { id: 'stress', label: 'Испытания', ready: true },
@@ -44,7 +46,7 @@ function MainApp() {
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-20 border-b border-black/5 bg-white/70 backdrop-blur-2xl backdrop-saturate-150">
+      <header className="sticky top-0 z-20 print:hidden border-b border-black/5 bg-white/70 backdrop-blur-2xl backdrop-saturate-150">
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-3 py-2 sm:gap-6 sm:px-6 sm:py-2.5">
           <div className="flex shrink-0 items-center gap-2.5">
             <div className="grid h-8 w-8 place-items-center rounded-[10px] bg-gradient-to-br from-slate-800 to-slate-950 text-sm font-bold text-white shadow-sm">A</div>
@@ -57,7 +59,7 @@ function MainApp() {
           <nav className="mx-auto flex gap-0.5 overflow-x-auto rounded-full bg-slate-900/[0.05] p-1 [scrollbar-width:none]">
             {TABS.map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className={`relative whitespace-nowrap rounded-full px-2.5 py-1.5 text-[13px] font-medium sm:px-4 ${tab === t.id ? 'text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}>
+                className={`relative whitespace-nowrap rounded-full px-2 py-1.5 text-[13px] font-medium sm:px-4 ${tab === t.id ? 'text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}>
                 {tab === t.id && <motion.span layoutId="tab-pill" className="absolute inset-0 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.12)]" transition={{ type: 'spring', stiffness: 500, damping: 38 }} />}
                 <span className="relative">{t.short ? <><span className="sm:hidden">{t.short}</span><span className="hidden sm:inline">{t.label}</span></> : t.label}</span>
               </button>
@@ -71,6 +73,7 @@ function MainApp() {
         <AnimatePresence mode="wait">
           <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}>
             <Suspense fallback={<Wait />}>
+              {tab === 'briefing' && (server === false ? <NeedServer what="Брифинг собирается на сервере из прогноза, журнала и контрольной карты." /> : <BriefingPage />)}
               {tab === 'twin' && <TwinPage />}
               {tab === 'learning' && <LearningPage />}
               {tab === 'stress' && <StressPage />}

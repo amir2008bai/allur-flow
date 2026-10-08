@@ -22,6 +22,7 @@ from .trust import router as trust_router
 from .live import router as live_router
 from .spc import router as spc_router
 from .capa import router as capa_router
+from .briefing import router as briefing_router
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "raw" / "test_data.docx"
 
@@ -37,6 +38,7 @@ app.include_router(trust_router)
 app.include_router(live_router)
 app.include_router(spc_router)
 app.include_router(capa_router)
+app.include_router(briefing_router)
 
 WARMUP = {"done": False, "steps": [], "seconds": None}
 
@@ -55,6 +57,7 @@ def _warmup() -> None:
         ("обучение", lambda: __import__("app.learn.api", fromlist=["forecast_payload"]).forecast_payload()),
         ("контрольная карта брака", lambda: __import__("app.spc", fromlist=["paint"]).paint(date.today().isoformat())),
         ("цена минуты простоя", lambda: __import__("app.sim.api", fromlist=["station_value"]).station_value(12)),
+        ("брифинг", lambda: __import__("app.briefing", fromlist=["briefing"]).briefing(date.today().isoformat())),
         ("панель доверия", lambda: __import__("app.trust", fromlist=["trust"]).trust()),
         ("журнал обучения", lambda: (__import__("app.learn.api", fromlist=["alerts"]).alerts(), __import__("app.learn.api", fromlist=["calib"]).calib())),
     ]

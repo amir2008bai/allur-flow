@@ -306,3 +306,16 @@ def test_loss_cascade_by_station_sums_to_totals():
     assert abs(sum(by["availability"].values()) - p["cars"]["availability"]) < 1e-6
     assert abs(sum(by["quality"].values()) - p["cars"]["quality"]) < 1e-6
     assert max(by["availability"], key=by["availability"].get) == "assembly"     # обрыв цепи — поломка сборки
+
+
+def test_briefing_collects_day_on_one_page():
+    from app.briefing import briefing
+    b = briefing("2026-10-08")
+    s = b["forecast"]["shifts"]
+    assert len(s) == 2 and all(0 <= x["p_plan"] <= 1 and x["lo"] <= x["mean"] <= x["hi"] for x in s)
+    assert b["yesterday"]["day"] == "2026-10-07" and b["repair_order"][0]["station"] == "assembly"
+    texts = " ".join(r["text"] for r in b["risks"])
+    assert "не согласован" in texts                      # правило №4: план 5 500 — несогласованность, а не недовыпуск
+    assert any(r["where"] == "paint-spc" for r in b["risks"])
+    lv = [r["level"] for r in b["risks"]]
+    assert lv == sorted(lv, key={"high": 0, "medium": 1, "low": 2}.get)

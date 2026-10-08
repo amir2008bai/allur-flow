@@ -11,7 +11,7 @@ import type { ZoneId } from './twin/layout'
 interface Reply { answer: string; model: string; mode: 'llm' | 'offline'; sources: string[]; unverified: string[]; verified?: { label: string; value: string; note: string }[]; actions: { type: string; zone: ZoneId }[]; fallback_reason?: string }
 interface Msg { role: 'user' | 'assistant'; text: string; meta?: Reply }
 
-const CHIPS = ['Что сейчас происходит?', 'Успеем выполнить план смены?', 'Что если сейчас встанет сборка на час?', 'Выполним план месяца?', 'Что сделать, чтобы выполнить план?', 'Соблюдаем нормы ТЗ?', 'Брак окраски — случайность или проблема?', 'Что ремонтировать первым?']
+const CHIPS = ['Что сейчас происходит?', 'Успеем выполнить план смены?', 'Что если сейчас встанет сборка на час?', 'Выполним план месяца?', 'Что сделать, чтобы выполнить план?', 'Соблюдаем нормы ТЗ?', 'Брак окраски — случайность или проблема?', 'Что ремонтировать первым?', 'Что главное сегодня?']
 
 /** **жирный** → <b>, остальная разметка убирается. */
 function Rich({ text }: { text: string }) {
@@ -69,13 +69,13 @@ export default function Copilot() {
   }
 
   if (!open) return (
-    <button onClick={() => setOpen(true)} aria-label="Спросить двойник" className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 z-30 flex h-14 items-center gap-2 rounded-full bg-slate-900 px-4 text-sm sm:right-5 sm:h-auto sm:px-5 sm:py-3 font-semibold text-white shadow-xl hover:bg-slate-700">
+    <button onClick={() => setOpen(true)} aria-label="Спросить двойник" className="print:hidden fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 z-30 flex h-14 items-center gap-2 rounded-full bg-slate-900 px-4 text-sm sm:right-5 sm:h-auto sm:px-5 sm:py-3 font-semibold text-white shadow-xl hover:bg-slate-700">
       <Sparkles size={19} /><span className="hidden sm:inline">Спросить двойник</span>
     </button>
   )
 
   return (
-    <div className="fixed inset-x-2 bottom-2 z-30 flex h-[85dvh] sm:inset-x-auto sm:bottom-5 sm:right-5 sm:h-[min(620px,80vh)] sm:w-[400px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
+    <div className="print:hidden fixed inset-x-2 bottom-2 z-30 flex h-[85dvh] sm:inset-x-auto sm:bottom-5 sm:right-5 sm:h-[min(620px,80vh)] sm:w-[400px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
         <div>
           <div className="flex items-center gap-1.5 font-semibold"><Sparkles size={16} className="text-violet-600" />Помощник смены</div>

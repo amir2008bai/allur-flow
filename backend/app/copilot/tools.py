@@ -270,11 +270,24 @@ def get_downtime_cost() -> dict:
             "примечание": "маржа — допущение A8; «+1 час» даёт машины только ограничителю"}
 
 
+def get_briefing() -> dict:
+    """Утренний брифинг: прогноз смен и дня, главные риски, главное действие, порядок ремонта."""
+    from ..briefing import briefing
+    b = briefing(_today_iso())
+    s1, day, a = b["forecast"]["shifts"][0], b["forecast"]["day"], b["action"]
+    return {"source": "брифинг: прогноз двойника, журнал, контрольная карта",
+            "смена_08_16": {"прогноз": round(s1["mean"]), "план": s1["plan"], "вероятность_плана_pct": round(100 * s1["p_plan"])},
+            "день": {"прогноз": round(day["mean"]), "план": day["plan"], "вероятность_плана_pct": round(100 * day["p_plan"])},
+            "риски": [r["text"] for r in b["risks"]],
+            "главное_действие": {"действия": a["names"], "прирост_машин_за_смену": round(a["delta"], 1)} if a["names"] else None,
+            "порядок_ремонта": [r["name"] for r in b["repair_order"]]}
+
+
 REGISTRY = {"get_current_view": get_current_view, "get_line_status": get_line_status, "compare_actions": compare_actions, "get_paint_quality": get_paint_quality,
             "get_data_findings": get_data_findings, "get_learning_status": get_learning_status, "focus_3d": focus_3d,
             "get_shift_forecast": get_shift_forecast, "simulate_stop": simulate_stop, "get_month_forecast": get_month_forecast,
             "get_day_report": get_day_report, "get_norms": get_norms, "get_paint_control_chart": get_paint_control_chart,
-            "get_downtime_cost": get_downtime_cost}
+            "get_downtime_cost": get_downtime_cost, "get_briefing": get_briefing}
 
 SCENARIO_ENUM = ["base", "paint_degradation", "conveyor_break"]
 SCHEMAS = [
@@ -303,6 +316,8 @@ SCHEMAS = [
     {"type": "function", "function": {"name": "get_paint_control_chart", "description": "Контрольная карта брака окраски: брак дня — обычный разброс или особая причина; средний уровень против нормы 2%; дни с особой причиной.",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "get_downtime_cost", "description": "Цена минуты простоя каждого участка (машины и тенге), какой ремонт делать первым, какой участок ограничивает выпуск (+1 час работы).",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "get_briefing", "description": "Утренний брифинг на сегодня: прогноз смен и дня с вероятностью плана, главные риски, главное действие, порядок ремонта.",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "get_norms", "description": "Нормы ТЗ против текущей смены: брак окраски (норма 2%), простой худшего участка (лимит 60 мин/сутки), OEE (цель 85%).",
         "parameters": {"type": "object", "properties": {}}}},

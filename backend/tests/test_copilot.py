@@ -62,3 +62,9 @@ def test_offline_copilot_answers_control_chart_and_downtime_cost():
     assert any(t["name"] == "get_paint_control_chart" for t in a["tools"]) and not a["unverified"]
     b = ask("Что ремонтировать первым?", offline=True)
     assert any(t["name"] == "get_downtime_cost" for t in b["tools"]) and "Сборка" in b["answer"] and not b["unverified"]
+
+
+def test_offline_copilot_answers_briefing():
+    from app.copilot.agent import ask
+    a = ask("Что главное сегодня?", offline=True)
+    assert any(t["name"] == "get_briefing" for t in a["tools"]) and "Смена 08–16" in a["answer"] and not a["unverified"]

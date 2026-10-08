@@ -156,7 +156,7 @@ export default function TwinPage() {
       {run && (
         <>
 
-          <Actions whatif={whatif} onFutures={(id) => { setFutures(id); document.getElementById('twin-viewer')?.scrollIntoView({ behavior: 'smooth' }) }} />
+          <div id="actions" className="scroll-mt-20"><Actions whatif={whatif} onFutures={(id) => { setFutures(id); document.getElementById('twin-viewer')?.scrollIntoView({ behavior: 'smooth' }) }} /></div>
 
           <div id="station-value" className="scroll-mt-20">{offline ? <NeedServer what="Цена простоя считается двойником на сервере." /> : <StationValue />}</div>
 
