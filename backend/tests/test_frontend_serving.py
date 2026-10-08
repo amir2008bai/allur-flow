@@ -31,7 +31,7 @@ def test_spa_and_static(tmp_path, monkeypatch):
 def test_api_not_shadowed(tmp_path, monkeypatch):
     monkeypatch.setenv("ALLUR_FRONTEND_DIST", str(_dist(tmp_path)))
     c = TestClient(app)
-    assert c.get("/api/health").json() == {"status": "ok"}
+    assert c.get("/api/health").json()["status"] == "ok"
     r = c.get("/api/nope")
     assert r.status_code == 404 and "id=root" not in r.text
 

@@ -18,6 +18,8 @@ from .sim.api import router as sim_router
 from .stress_api import router as stress_router
 from .data_api import router as data_router
 from .journal import router as journal_router
+from .trust import router as trust_router
+from .live import router as live_router
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "raw" / "test_data.docx"
 
@@ -29,6 +31,42 @@ app.include_router(copilot_router)
 app.include_router(stress_router)
 app.include_router(data_router)
 app.include_router(journal_router)
+app.include_router(trust_router)
+app.include_router(live_router)
+
+WARMUP = {"done": False, "steps": [], "seconds": None}
+
+
+def _warmup() -> None:
+    """Прогрев при запуске: тяжёлые расчёты считаются заранее в фоне, чтобы экраны открывались сразу.
+    Отключается ALLUR_WARMUP=0 (тесты)."""
+    import time
+    from datetime import date
+    t0 = time.time()
+    steps = [
+        ("смена", lambda: __import__("app.sim.api", fromlist=["shift"]).shift("", "", 20, "")),
+        ("как выполнить план", lambda: __import__("app.sim.api", fromlist=["_whatif"])._whatif("base", 20)),
+        ("прогноз к концу смены", lambda: __import__("app.sim.api", fromlist=["eta"]).eta("base", 7, 0)),
+        ("журнал и прогноз месяца", lambda: __import__("app.journal", fromlist=["month"]).month(date.today().isoformat()[:7], date.today().isoformat())),
+        ("обучение", lambda: __import__("app.learn.api", fromlist=["forecast_payload"]).forecast_payload()),
+        ("панель доверия", lambda: __import__("app.trust", fromlist=["trust"]).trust()),
+        ("журнал обучения", lambda: (__import__("app.learn.api", fromlist=["alerts"]).alerts(), __import__("app.learn.api", fromlist=["calib"]).calib())),
+    ]
+    for name, fn in steps:
+        try:
+            fn()
+            WARMUP["steps"].append(name)
+        except Exception as e:  # noqa: BLE001 — прогрев не должен ронять сервер
+            WARMUP["steps"].append(f"{name}: ошибка {type(e).__name__}")
+    WARMUP.update(done=True, seconds=round(time.time() - t0, 1))
+
+
+@app.on_event("startup")
+def _start_warmup() -> None:
+    import os
+    import threading
+    if os.environ.get("ALLUR_WARMUP", "1") != "0":
+        threading.Thread(target=_warmup, daemon=True, name="warmup").start()
 
 
 @lru_cache
@@ -38,7 +76,7 @@ def facts() -> Facts:
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"status": "ok"}
+    return {"status": "ok", "warmup": WARMUP}
 
 
 @app.get("/api/facts", response_model=Facts)

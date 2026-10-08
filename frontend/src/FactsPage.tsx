@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { AreaId, Facts, Finding, Severity } from './types'
 import { Card, SEVERITY, SourceBadge, fmt } from './ui'
 import DataSource from './DataSource'
+import LivePanel from './LivePanel'
 
 const SEV_RANK: Record<Severity, number> = { critical: 0, warn: 1, info: 2, ok: 3 }
 
@@ -146,6 +147,7 @@ export default function FactsPage({ facts, findings }: { facts: Facts; findings:
   return (
     <div className="space-y-6">
       <DataSource />
+      <LivePanel />
       <Route facts={facts} findings={findings} selected={area} onSelect={setArea} />
 
       {problems.length > 0 && (

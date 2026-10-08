@@ -1,0 +1,23 @@
+{
+ "source": "fact",
+ "dataset": "UCI 597 · Productivity Prediction of Garment Employees (реальная фабрика, 2015)",
+ "url": "https://archive.ics.uci.edu/dataset/597",
+ "days_total": 59,
+ "test_days": 24,
+ "test_rows": 486,
+ "accuracy_model": 0.8577,
+ "accuracy_plan": 0.8484,
+ "accuracy_naive": 0.8312,
+ "gain_vs_plan": 0.0616,
+ "gain_vs_naive": 0.157,
+ "interval_target": 0.9,
+ "interval_coverage": 0.9107,
+ "dip_auc": 0.712,
+ "dip_precision": 0.462,
+ "dip_base_rate": 0.183,
+ "robust_dip_auc": [
+  0.737,
+  0.77
+ ],
+ "note": "Швейная фабрика (UCI 597, CC BY 4.0): прогноз до смены, учимся на прошлых днях, проверка на последних 40% дней. Полный отчёт — validation-real/REPORT.md"
+}

@@ -21,7 +21,7 @@ import { load, type Mode, type SimMeta, type SimRun, type WhatIf } from './sourc
 import { Card, SourceBadge } from './ui'
 
 import { BottleneckBadge, STATUS, StatusLegend } from './theme'
-import { CalendarDays, Columns2, Orbit, Square } from 'lucide-react'
+import { CalendarDays, Columns2, Orbit, ShieldCheck, Square } from 'lucide-react'
 import DatePicker from './DatePicker'
 import { seedFromDate } from './dates'
 import { isPhone } from './twin/store'
@@ -109,6 +109,7 @@ export default function TwinPage() {
         <span className="ml-auto flex items-center gap-3 text-xs text-slate-500">
           <DatePicker value={date} onChange={setDate} />
           <button onClick={() => document.getElementById('journal')?.scrollIntoView({ behavior: 'smooth' })} className="flex items-center gap-1 rounded-xl bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><CalendarDays size={14} />Журнал</button>
+          <button onClick={() => { useView.getState().setTab('learning'); window.scrollTo({ top: 0 }) }} className="flex items-center gap-1 rounded-xl bg-white px-3 py-2 text-xs font-medium text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-50"><ShieldCheck size={14} />Почему верить</button>
           <SourceBadge source="sim" />{mode === 'replay' && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">офлайн-режим</span>}
         </span>
       </div>

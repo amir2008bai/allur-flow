@@ -106,3 +106,20 @@ def test_camera_events_update_calibration():
     assert st["calib"]["current"]["mean"] > m0          # 25% брака от камеры → оценка выросла
     assert c.post("/api/learn/camera/event", json={"event_type": "что-то"}).status_code == 422
     c.post("/api/learn/reset")
+
+
+def test_learning_survives_server_restart():
+    # ответы людей, ввод брака и события камеры хранятся в базе и восстанавливаются после перезапуска
+    from app.learn import api
+    api.reset()
+    card = api.alerts().next_card()
+    api.vote(api.VoteIn(alert_id=card["id"], verdict="reject", voter="мастер"))
+    api.calib_add(api.CalibIn(produced=100, defects=9, who="ОТК"))
+    api.camera_demo(n=20)
+    before = (api.alerts().state()["votes"], round(api.calib().state()["current"]["mean"], 5), api.calib().camera_seen)
+    api._alerts = None; api._calib = None                 # «перезапуск»: память стёрта
+    after = (api.alerts().state()["votes"], round(api.calib().state()["current"]["mean"], 5), api.calib().camera_seen)
+    assert before == after and before[0] == 1 and before[2] == 20
+    api.reset()
+    api._alerts = None; api._calib = None
+    assert api.alerts().state()["votes"] == 0 and api.calib().camera_seen == 0   # сброс тоже сохраняется

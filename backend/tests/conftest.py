@@ -7,6 +7,7 @@ import tempfile
 _TMP = tempfile.mkdtemp(prefix="allur_tests_")
 os.environ["ALLUR_DB"] = os.path.join(_TMP, "test.sqlite")
 os.environ["ALLUR_STATE_DIR"] = _TMP
+os.environ["ALLUR_WARMUP"] = "0"
 
 
 def pytest_sessionfinish(session, exitstatus):

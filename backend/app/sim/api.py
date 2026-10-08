@@ -385,3 +385,11 @@ def eta(scenario: str = "base", seed: int = 7, t: float = Query(0, ge=0, le=960)
             "start": {"total_mean": float(start.mean()), "total_range": q(start), "p_plan": float((start >= plan).mean())},
             "ended": ended, "actual": float(good[s1] - good[s0]) if ended else None, "reps": ETA_REPS,
             "events": [{"station": st, "name": STATION_RU[st], "at": at, "minutes": d} for st, at, d in parse_events(scenario)]}
+
+
+
+@router.get("/line")
+def line() -> dict:
+    """Описание линии из файла настроек (data/line.json): участки, оборудование, параметры, накопители."""
+    from .params import LINE, LINE_FILE
+    return {"source": "config", "file": LINE_FILE.name, **{k: v for k, v in LINE.items() if not k.startswith("_")}}

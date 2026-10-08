@@ -61,6 +61,6 @@ def test_findings_key_numbers(facts):
 
 def test_api():
     c = TestClient(app)
-    assert c.get("/api/health").json() == {"status": "ok"}
+    assert c.get("/api/health").json()["status"] == "ok"
     assert len(c.get("/api/facts").json()["lines"]) == 6
     assert c.get("/api/findings").json()[0]["severity"] == "critical"

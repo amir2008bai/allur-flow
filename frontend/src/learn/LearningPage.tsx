@@ -9,6 +9,7 @@ const dayLabel = (t: number) => shortDate(addDays(START, Math.floor(t / 960)))
 import { Card, SourceBadge } from '../ui'
 import { NeedServer } from '../NetBanners'
 import { useNet } from '../net'
+import TrustPanel from './TrustPanel'
 import { api, pct, type AlertsState, type CalibState, type CameraLog, type ForecastPayload, type GlobalState, type TwinFit } from './api'
 
 const AX = { color: '#94a3b8', fontSize: 10 }
@@ -419,6 +420,7 @@ export default function LearningPage() {
   if (server === false) return <NeedServer what="Обучение, голосование и дообучение работают на сервере. Двойник и Испытания доступны и без него." />
   return (
     <div className="space-y-6">
+      <TrustPanel />
       <JuryBlock />
       <ForecastBlock />
       <RetrainBlock />

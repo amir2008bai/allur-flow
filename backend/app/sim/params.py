@@ -6,11 +6,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
-STATIONS = ["welding", "paint", "assembly", "qc"]
-STATION_RU = {"welding": "Сварка", "paint": "Окраска", "assembly": "Сборка", "qc": "Контроль качества"}
+import json
+import os
+from pathlib import Path
+
+# Линия описана файлом data/line.json (участки, оборудование, циклы, брак, надёжность, накопители).
+# ALLUR_LINE — путь к другому файлу (другая линия завода) без правки кода.
+LINE_FILE = Path(os.environ.get("ALLUR_LINE") or Path(__file__).resolve().parents[3] / "data" / "line.json")
+LINE = json.loads(LINE_FILE.read_text(encoding="utf-8"))
+
+STATIONS = [st["id"] for st in LINE["stations"]]
+STATION_RU = {st["id"]: st["name"] for st in LINE["stations"]}
+STATION_ASSETS = {st["id"]: st.get("assets", []) for st in LINE["stations"]}
 # буфер i стоит перед станцией STATIONS[i+1]
-BUFFERS = ["b_weld_paint", "b_paint_asm", "b_asm_qc"]
-BUFFER_RU = {"b_weld_paint": "Сварка → Окраска", "b_paint_asm": "Окраска → Сборка (PBS)", "b_asm_qc": "Сборка → ОТК"}
+BUFFERS = [b["id"] for b in LINE["buffers"]]
+BUFFER_RU = {b["id"]: b["name"] for b in LINE["buffers"]}
 
 
 @dataclass(frozen=True)
@@ -65,14 +75,13 @@ class LineParams:
 
 
 BASE = LineParams(
-    stations={
-        "welding": StationParams(cycle=3.62, cycle_cv=0.08, defect_p=5 / 229, rework_min=3.0, mtbf_work=900, mttr=28),
-        "paint": StationParams(cycle=3.68, cycle_cv=0.10, defect_p=10 / 231, rework_min=0.0, mtbf_work=1100, mttr=35),
-        "assembly": StationParams(cycle=3.78, cycle_cv=0.08, defect_p=3 / 240, rework_min=4.0, mtbf_work=1000, mttr=40),
-        "qc": StationParams(cycle=3.0, cycle_cv=0.10, defect_p=0.0, rework_min=0.0, mtbf_work=None),
-    },
-    buffer_cap={"b_weld_paint": 8, "b_paint_asm": 12, "b_asm_qc": 4},
-    buffer_init={"b_weld_paint": 4, "b_paint_asm": 8, "b_asm_qc": 2},
+    stations={st["id"]: StationParams(cycle=st["cycle"], cycle_cv=st["cycle_cv"], defect_p=st["defect_p"], rework_min=st["rework_min"],
+                                      mtbf_work=st["mtbf_work"], mttr=st.get("mttr", 30.0)) for st in LINE["stations"]},
+    buffer_cap={b["id"]: b["cap"] for b in LINE["buffers"]},
+    buffer_init={b["id"]: b["init"] for b in LINE["buffers"]},
+    shift_minutes=float(LINE.get("shift_minutes", 480)),
+    horizon=float(LINE.get("shift_minutes", 480) * LINE.get("shifts_per_day", 2)),
+    **{k: LINE.get("paint_repair", {}).get(k, v) for k, v in {"spot_repair_p": 0.7, "repair_mean": 6.0, "repair_servers": 1, "max_paint_passes": 2}.items()},
 )
 
 ASSUMPTIONS = [

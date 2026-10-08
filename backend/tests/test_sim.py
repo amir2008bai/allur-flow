@@ -155,3 +155,14 @@ def test_month_forecast_reacts_to_maintenance_mark():
     with_to = journal.month("2026-10", "2026-10-08")["forecast"]["total_mean"]
     journal.mark(journal.Mark(day="2026-10-20", kind="auto", today="2026-10-08"))
     assert with_to < base - 20
+
+
+def test_line_is_described_by_config_file():
+    # параметры двойника берутся из data/line.json, а не из кода
+    from app.sim.api import line
+    from app.sim.params import BASE, BUFFERS, STATIONS
+    cfg = line()
+    assert [s["id"] for s in cfg["stations"]] == STATIONS and [b["id"] for b in cfg["buffers"]] == BUFFERS
+    for s in cfg["stations"]:
+        assert BASE.stations[s["id"]].cycle == s["cycle"] and BASE.stations[s["id"]].mtbf_work == s["mtbf_work"]
+    assert all(BASE.buffer_cap[b["id"]] == b["cap"] for b in cfg["buffers"])

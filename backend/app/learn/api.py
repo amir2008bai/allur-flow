@@ -13,32 +13,79 @@ from .alerts import AlertLearner
 from .calib import Calibrator
 from .forecast import run_learning
 
+from collections import deque as _deque_early
+
 router = APIRouter(prefix="/api/learn")
+_camera_log = _deque_early(maxlen=30)
 SHOWCASE_SEED = 11
 _alerts: AlertLearner | None = None
 _calib: Calibrator | None = None
 _con = None
 
 
+def con():
+    global _con
+    if _con is None:
+        _con = connect()
+        _con.execute("""CREATE TABLE IF NOT EXISTS learning_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL)""")
+    return _con
+
+
+# ── Журнал обучения: всё, чему люди и камера научили систему, хранится в SQLite и переживает перезапуск ──
+def log_learning(kind: str, payload: dict) -> None:
+    """kind: vote / calib_add / calib_undo / camera / reset. Пишем ДО применения — состояние восстанавливается проигрыванием."""
+    import json as _json
+    con().execute("INSERT INTO learning_log (ts, kind, payload) VALUES (?,?,?)", (time.time(), kind, _json.dumps(payload, ensure_ascii=False)))
+    con().commit()
+
+
+def _replay_rows() -> list[tuple[str, dict]]:
+    import json as _json
+    rows = con().execute("SELECT kind, payload FROM learning_log ORDER BY id").fetchall()
+    last_reset = max((i for i, (k, _) in enumerate(rows) if k == "reset"), default=-1)
+    return [(k, _json.loads(pl)) for k, pl in rows[last_reset + 1:]]
+
+
 def alerts() -> AlertLearner:
     global _alerts
     if _alerts is None:
-        _alerts = AlertLearner()
+        a = AlertLearner()
+        for kind, pl in _replay_rows():
+            if kind == "vote":
+                try:
+                    a.vote(pl["alert_id"], pl["verdict"], pl.get("voter", ""), pl.get("simulated", False))
+                except (KeyError, ValueError):
+                    pass          # набор тревог изменился (другие данные) — старый ответ не к чему применить
+        _alerts = a
     return _alerts
 
 
 def calib() -> Calibrator:
     global _calib
     if _calib is None:
-        _calib = Calibrator()
+        c = Calibrator()
+        _camera_log.clear()
+        for kind, pl in _replay_rows():
+            try:
+                if kind == "calib_add":
+                    c.add(pl["produced"], pl["defects"], pl.get("who", ""))
+                elif kind == "calib_undo":
+                    c.undo()
+                elif kind == "camera":
+                    c.add_camera(pl["defect"], pl["source"], pl["provenance"])
+                    _camera_log.appendleft({k: pl.get(k) for k in ("ts", "defect", "defect_class", "body_id")} | {"source": pl.get("cam_source")})
+            except (KeyError, ValueError):
+                pass
+        _calib = c
     return _calib
 
 
-def con():
-    global _con
-    if _con is None:
-        _con = connect()
-    return _con
+def learning_stats() -> dict:
+    rows = _replay_rows()
+    kinds = [k for k, _ in rows]
+    return {"votes": kinds.count("vote"), "calib_inputs": kinds.count("calib_add"), "camera_events": kinds.count("camera"),
+            "since": con().execute("SELECT MAX(ts) FROM learning_log WHERE kind='reset'").fetchone()[0]}
 
 
 @lru_cache(maxsize=1)
@@ -123,13 +170,16 @@ def calib_state() -> dict:
 @router.post("/calib")
 def calib_add(body: CalibIn) -> dict:
     try:
-        return calib().add(body.produced, body.defects, body.who)
+        st = calib().add(body.produced, body.defects, body.who)
+        log_learning("calib_add", {"produced": body.produced, "defects": body.defects, "who": body.who})
+        return st
     except ValueError as e:
         raise HTTPException(422, str(e))
 
 
 @router.post("/calib/undo")
 def calib_undo() -> dict:
+    log_learning("calib_undo", {})
     return calib().undo()
 
 
@@ -149,6 +199,7 @@ def next_card(skip: str = "") -> dict:
 def vote(body: VoteIn) -> dict:
     try:
         st = alerts().vote(body.alert_id, body.verdict, body.voter)
+        log_learning("vote", {"alert_id": body.alert_id, "verdict": body.verdict, "voter": body.voter})
     except KeyError:
         raise HTTPException(404, "Нет такой тревоги")
     con().execute("INSERT INTO feedback (alert_id, verdict, reason, user_role, created_at) VALUES (?,?,?,?,?)",
@@ -159,7 +210,12 @@ def vote(body: VoteIn) -> dict:
 
 @router.post("/alerts/simulate")
 def simulate_votes(n: int = 10) -> dict:
-    return alerts().simulate_votes(max(1, min(n, 50)))
+    a = alerts()
+    before = len(a.votes)
+    st = a.simulate_votes(max(1, min(n, 50)))
+    for v in a.votes[before:]:
+        log_learning("vote", {"alert_id": v["alert_id"], "verdict": v["verdict"], "voter": v["voter"], "simulated": True})
+    return st
 
 
 @router.get("/alerts/state")
@@ -174,7 +230,6 @@ import random as _random
 from collections import deque as _deque
 from typing import Literal
 
-_camera_log: _deque = _deque(maxlen=30)
 DEFECT_CLASSES = ["подтёк", "сорность", "кратер", "шагрень", "непрокрас"]
 
 
@@ -190,7 +245,10 @@ class CameraEvent(BaseModel):
 def _ingest(ev: CameraEvent) -> None:
     ts = ev.ts or time.time()
     defect = ev.event_type == "paint_defect"
-    calib().add_camera(defect, "feedback" if ev.source == "cv_camera" else "sim", f"{ev.source}:{ev.asset_id}:{ev.body_id or '-'}")
+    src, prov = ("feedback" if ev.source == "cv_camera" else "sim"), f"{ev.source}:{ev.asset_id}:{ev.body_id or '-'}"
+    calib().add_camera(defect, src, prov)
+    log_learning("camera", {"defect": defect, "source": src, "provenance": prov, "ts": ts, "defect_class": ev.defect_class,
+                            "body_id": ev.body_id, "cam_source": ev.source})
     _camera_log.appendleft({"ts": ts, "defect": defect, "defect_class": ev.defect_class, "body_id": ev.body_id, "source": ev.source})
 
 
@@ -220,6 +278,7 @@ def camera_state() -> dict:
 
 @router.post("/reset")
 def reset() -> dict:
+    log_learning("reset", {})
     alerts().reset()
     calib().reset()
     _camera_log.clear()

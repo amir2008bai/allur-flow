@@ -10,22 +10,8 @@ from app.twin_calib import fit
 
 
 def _synthetic_plant(days: int = 21):
-    """«Реальный» завод: окраска ломается чаще и чинится дольше, чем считает двойник."""
-    hidden = dict(BASE.stations)
-    hidden["paint"] = replace(hidden["paint"], mtbf_work=500, mttr=55)
-    hidden["welding"] = replace(hidden["welding"], mtbf_work=1400, mttr=20)
-    plant = BASE.with_(stations=hidden, horizon=960)
-    pv = Provenance(file="synthetic", table=0, row=0)
-    down, lines = [], []
-    for d in range(days):
-        day = date(2026, 9, 1) + timedelta(days=d)
-        run = simulate(plant, 9000 + d)
-        for e in run.events:
-            if e["type"] == "stop_start" and e["station"] in ("welding", "paint", "assembly") and not e.get("planned"):
-                down.append(DowntimeRecord(date=day, area=e["station"], asset_id=e["station"], equipment=e["station"], reason="отказ",
-                                           minutes=max(1, round(e["minutes"])), planned=False, provenance=pv))
-        lines.append(LineRecord(date=day, line="Сборка-1", area="assembly", plan=240, fact=run.good_out, runtime_h=16, utilization_pct=95, provenance=pv))
-    return active_facts().model_copy(update={"downtime": down, "lines": lines})
+    from app.twin_calib import synthetic_plant
+    return synthetic_plant(days)
 
 
 def test_fit_recovers_hidden_reliability():
