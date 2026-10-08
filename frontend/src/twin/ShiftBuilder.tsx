@@ -6,7 +6,7 @@ import MoneyInputs from './MoneyInputs'
 import { useView } from './store'
 
 interface Opt { id: string; short: string; name: string; detail: string; do?: string; money?: { month: number; once: number } }
-interface Side { good_per_shift: number; lo: number; hi: number; oee_pct: number; oee_parts?: { availability: number; performance: number; quality: number }; downtime_min: number; paint_defect_pct: number; worst_station_down_day?: number; delta?: number; delta_ci?: [number, number] }
+interface Side { good_per_shift: number; lo: number; hi: number; oee_pct: number; defect_pct?: Record<string, number>; oee_parts?: { availability: number; performance: number; quality: number }; downtime_min: number; paint_defect_pct: number; worst_station_down_day?: number; delta?: number; delta_ci?: [number, number] }
 interface Shift { targets?: { oee_min_pct: number; defect_max_pct: number; downtime_max_min_per_day: number }; plan_per_shift: number; normal: Side; forecast: Side; actions: { id: string; cost_per_shift: number; once: number }[]; reps: number
   twin?: { learned: boolean; paint_defect_p: number; observations: number; version: string } }
 
@@ -140,10 +140,14 @@ export default function ShiftBuilder() {
       {data?.targets && (fc ?? normal) && (() => {
         const side = (touched ? fc : normal)!
         const tg = data.targets!
+        // норма брака — для каждого участка: показываем худший (обычно окраска)
+        const RU: Record<string, string> = { welding: 'сварка', paint: 'окраска', assembly: 'сборка' }
+        const [wst, wv] = Object.entries(side.defect_pct ?? { paint: side.paint_defect_pct }).reduce((a, b) => (b[1] > a[1] ? b : a))
+        const overN = Object.values(side.defect_pct ?? {}).filter((v) => v > tg.defect_max_pct).length
         const pills = [
-          { label: 'Брак окраски', value: `${side.paint_defect_pct.toFixed(1).replace('.', ',')}%`, norm: `норма ≤ ${tg.defect_max_pct}%`, bad: side.paint_defect_pct > tg.defect_max_pct, warn: false },
-          { label: 'Простой худшего участка', value: `${int(side.worst_station_down_day ?? 0)} мин/сутки`, norm: `лимит ${tg.downtime_max_min_per_day}`, bad: (side.worst_station_down_day ?? 0) > tg.downtime_max_min_per_day * 1.1, warn: (side.worst_station_down_day ?? 0) > tg.downtime_max_min_per_day * 0.9 },
-          { label: 'OEE линии', value: `${int(side.oee_pct)}%`, norm: `цель ≥ ${tg.oee_min_pct}%`, bad: side.oee_pct < tg.oee_min_pct - 3, warn: side.oee_pct < tg.oee_min_pct },
+          { label: `Брак: ${RU[wst] ?? wst}`, value: `${wv.toFixed(1).replace('.', ',')}%`, norm: `норма ≤ ${tg.defect_max_pct}%${overN > 1 ? ` · выше нормы участков: ${overN}` : ''}`, bad: wv > tg.defect_max_pct, warn: false },
+          { label: 'Простой худшего участка', value: `${int(side.worst_station_down_day ?? 0)} мин/сутки`, norm: `лимит ${tg.downtime_max_min_per_day}`, bad: (side.worst_station_down_day ?? 0) > tg.downtime_max_min_per_day, warn: (side.worst_station_down_day ?? 0) > tg.downtime_max_min_per_day * 0.9 },
+          { label: 'OEE линии', value: `${int(side.oee_pct)}%`, norm: `цель ≥ ${tg.oee_min_pct}%`, bad: side.oee_pct < tg.oee_min_pct, warn: side.oee_pct < tg.oee_min_pct + 2 },   // ТЗ: «не менее» — ниже цели уже нарушение
         ]
         return (
           <div className="mt-3 flex flex-wrap items-center gap-2">

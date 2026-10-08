@@ -40,8 +40,13 @@ def quality_findings(f: Facts) -> list[Finding]:
         d = sum(r.defects for r in rows)
         post = defect_posterior(d, n, limit)
         p = post["p_above"]
+        # норма ТЗ задана на брак, а таблица даёт его по дням: день выше нормы — это факт нарушения,
+        # даже если за весь период байесовская оценка ещё не уверена
+        over = [r for r in rows if r.produced and 100 * r.defects / r.produced > f.targets.defect_max_pct]
         if p >= 0.95:
             sev, verdict = "critical", "надёжно выше нормы"
+        elif over:
+            sev, verdict = "warn", "выше нормы в отдельные дни"
         elif p >= 0.5:
             sev, verdict = "warn", "на грани нормы, данных мало"
         else:
@@ -51,13 +56,15 @@ def quality_findings(f: Facts) -> list[Finding]:
             id=f"quality.{area}", area=area, severity=sev,
             title=f"Брак — {AREA_RU[area]}: {verdict}",
             summary=(f"Дефектов: {d} из {n} за {len(rows)} дня ({daily}). "
-                     f"Вероятность, что истинный брак выше {f.targets.defect_max_pct:g}% — {_pct(p, 0)}%."),
+                     f"Вероятность, что истинный брак выше {f.targets.defect_max_pct:g}% — {_pct(p, 0)}%."
+                     + (f" Выше нормы: {', '.join(f'{r.date:%d.%m}' for r in over)}." if over else "")),
             metrics=[
                 Metric(label="Брак за период", value=_pct(d / n, 2), unit="%", source="calc"),
                 Metric(label="Оценка брака (90% интервал)",
                        value=f"{_pct(post['lo90'])}–{_pct(post['hi90'])}", unit="%", source="calc"),
                 Metric(label=f"P(брак > {f.targets.defect_max_pct:g}%)", value=round(p, 2), source="calc"),
                 Metric(label="Норма", value=f.targets.defect_max_pct, unit="%", source="fact"),
+                Metric(label="Дней выше нормы", value=len(over), source="calc"),
             ],
             caveat="Байесовская оценка (Jeffreys prior) по 2 дням. Число бракованных машин из этого не следует: без VIN дефекты участков нельзя суммировать.",
             provenance=[r.provenance for r in rows],

@@ -304,6 +304,8 @@ def _shift(faults: tuple[str, ...], actions: tuple[str, ...], reps: int, ver: st
                       "oee_pct": float(np.mean([k["oee_pct"] for k in ks])), "downtime_min": float(down.mean()),
                       "oee_parts": {x: float(np.mean([k["oee_parts"][x] for k in ks])) for x in ("availability", "performance", "quality")},
                       "paint_defect_pct": float(np.mean([k["defect_pct"]["paint"] for k in ks])),
+                      # брак всех участков: норма ТЗ 2% касается каждого, не только окраски
+                      "defect_pct": {st: float(np.mean([k["defect_pct"][st] for k in ks])) for st in ("welding", "paint", "assembly")},
                       "worst_station_down_day": float(np.mean(worst))}
 
     g0, normal = stats(base_p)

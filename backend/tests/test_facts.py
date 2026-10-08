@@ -64,3 +64,19 @@ def test_api():
     assert c.get("/api/health").json()["status"] == "ok"
     assert len(c.get("/api/facts").json()["lines"]) == 6
     assert c.get("/api/findings").json()[0]["severity"] == "critical"
+
+
+def test_defect_norm_is_checked_for_every_area_and_day():
+    # норма брака 2% касается всех участков: сварка 02.10 (2,7%) — нарушение, а не «на грани»
+    from app.dataset import active_facts
+    from app.findings import all_findings
+    f = {x.id: x for x in all_findings(active_facts())}
+    weld = f["quality.welding"]
+    assert weld.severity == "warn" and "02.10" in weld.title and "выше нормы" in weld.title
+    assert f["quality.assembly"].severity == "ok"
+
+
+def test_shift_norms_report_defects_of_all_areas():
+    from app.sim.api import shift
+    r = shift("", "", 4, "")
+    assert set(r["normal"]["defect_pct"]) == {"welding", "paint", "assembly"}

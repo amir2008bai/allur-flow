@@ -238,6 +238,8 @@ def get_norms() -> dict:
     tg = r["targets"]
     return {"source": "нормы — факт ТЗ; значения — симуляция смены (20 прогонов)",
             "брак_окраски_pct": round(side["paint_defect_pct"], 1), "норма_брака_pct": tg["defect_max_pct"],
+            **({"брак_по_участкам_pct": {STATION_RU[st]: round(v, 1) for st, v in side["defect_pct"].items()},
+                "участки_выше_нормы_брака": [STATION_RU[st] for st, v in side["defect_pct"].items() if v > tg["defect_max_pct"]]} if side.get("defect_pct") else {}),
             "простой_худшего_участка_мин_в_сутки": round(side["worst_station_down_day"]), "лимит_простоя_мин_в_сутки": tg["downtime_max_min_per_day"],
             "oee_pct": round(side["oee_pct"]), "цель_oee_pct": tg["oee_min_pct"],
             **({"oee_из_чего": {"доступность_pct": round(side["oee_parts"]["availability"]), "темп_pct": round(side["oee_parts"]["performance"]),

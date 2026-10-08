@@ -32,6 +32,7 @@ router = APIRouter(prefix="/api/journal")
 PLAN_SHIFT = 120
 PLAN_DAY = 2 * PLAN_SHIFT
 SHIFT = 480
+REV = 2                   # версия правил записи дня: 2 — норма брака по всем участкам; старые записи пересобираются
 MAINT_MIN = 240           # ТО: линия стоит 4 часа в начале дня (плановая остановка)
 _con = None
 SCHEMA = """CREATE TABLE IF NOT EXISTS journal (day TEXT PRIMARY KEY, record TEXT NOT NULL, saved_at REAL NOT NULL, source TEXT NOT NULL);
@@ -156,15 +157,18 @@ def _build(d: Date) -> dict:
                    "planned": x["planned"], "shift": x["shift"], "why": x["why"], "source": "fact"} for x in sorted(fs["downtime"], key=lambda x: (x["planned"], -x["minutes"]))]
         by = {(x["station"], x["reason"]): x["minutes"] for x in fs["downtime"] if not x["planned"]}
         norms = list(fs["norms"])
-    elif defect > tg["defect_max_pct"]:
-        norms.append({"kind": "defect", "text": f"брак окраски {str(defect).replace('.', ',')}% — выше нормы {tg['defect_max_pct']:g}%"})
+    else:
+        for st, gen in (("welding", "сварки"), ("paint", "окраски"), ("assembly", "сборки")):
+            v = round(k["defect_pct"][st], 1)
+            if v > tg["defect_max_pct"]:
+                norms.append({"kind": "defect", "text": f"брак {gen} {str(v).replace('.', ',')}% — выше нормы {tg['defect_max_pct']:g}%"})
     for st, m in sorted(per_station.items(), key=lambda x: -x[1]) if not fs else ():
         if m > tg["downtime_max_min_per_day"]:
             norms.append({"kind": "downtime", "text": f"{STATION_RU.get(st, st)} простаивала {round(m)} мин — лимит {tg['downtime_max_min_per_day']} мин/сутки"})
     if oee < tg["oee_min_pct"]:
         norms.append({"kind": "oee", "source": "sim", "text": f"OEE {oee}% — ниже цели {tg['oee_min_pct']:g}% (двойник)"})
     return {"day": d.isoformat(), "seed": seed, "scenario": scenario, "source": "fact+sim" if fs else "sim",
-            "facts": fs, "facts_key": fact_days.key(d),
+            "facts": fs, "facts_key": fact_days.key(d), "rev": REV,
             "conditions": fact_days.describe(d) if fs else (scenario_name(scenario) if scenario != "base" else "штатная смена"),
             "plan": PLAN_DAY, "fact": fact, "pct": 100 * fact / PLAN_DAY,
             "shifts": shifts, "losses": losses[:5], "downtime_min": round(sum(by.values())),
@@ -178,7 +182,7 @@ def record(d: Date) -> dict:
         rec = json.loads(row[0])
         # запись совпадает с данными завода за этот день (или их нет) — это история, отдаём как есть;
         # данные завода появились/изменились — день пересобирается из них
-        if rec.get("facts_key") == fact_days.key(d):
+        if rec.get("facts_key") == fact_days.key(d) and rec.get("rev", 1) == REV:
             return {**rec, "saved_at": row[1]}
     rec = _build(d)
     now = time.time()

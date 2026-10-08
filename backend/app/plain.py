@@ -26,6 +26,11 @@ def simplify(items: list[Finding], facts: Facts) -> list[Finding]:
             f.key, f.key_note = f"{_n(pct)}%", f"норма {_n(norm, 0)}%"
             if f.severity == "critical":
                 f.title, f.plain = f"{name}: брак выше нормы", "Оба дня выше нормы — это не случайность."
+            elif f.severity == "warn" and (_metric(f, "Дней выше нормы") or 0) > 0:
+                days = [r for r in facts.quality if r.area == f.area and r.produced and 100 * r.defects / r.produced > norm]
+                f.title = f"{name}: брак выше нормы {', '.join(f'{r.date:%d.%m}' for r in days)}"
+                f.plain = (", ".join(f"{r.date:%d.%m} — {_n(100 * r.defects / r.produced)}%" for r in days)
+                           + f" при норме {_n(norm, 0)}%. В среднем за период — на грани, данных мало, чтобы сказать, что так всегда.")
             elif f.severity == "warn":
                 f.title, f.plain = f"{name}: брак на грани", "Данных мало — нужно больше смен, чтобы сказать точно."
             else:
