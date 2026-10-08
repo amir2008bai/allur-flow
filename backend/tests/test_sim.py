@@ -123,3 +123,18 @@ def test_eta_updates_during_shift_and_stop_now():
     assert stop["done"] == noon["done"]            # до момента остановки смена та же
     assert parse_cfg("cfg:|fast_repair|assembly@360+60") == ([], ["fast_repair"])
     assert "Сборка встала в 14:00 на 60 мин" in scenario_name("cfg:||assembly@360+60")
+
+
+def test_journal_day_record_saved_once_and_honest():
+    from datetime import date
+    from app import journal
+    d = date(2026, 10, 6)
+    journal.con().execute("DELETE FROM journal WHERE day=?", (d.isoformat(),))
+    r1 = journal.record(d)
+    r2 = journal.record(d)
+    assert r1["saved_at"] == r2["saved_at"]                       # запись делается один раз
+    assert r1["fact"] == sum(s["fact"] for s in r1["shifts"]) and r1["plan"] == 240
+    weld = [l for l in r1["losses"] if l["station"] == "welding" and l["reason"] == "авария"]
+    assert weld and weld[0]["minutes"] <= 96                       # авария 95 мин не задваивается
+    m = journal.month("2026-10", "2026-10-08")
+    assert len(m["days"]) == 8 and m["plan_to_date"] == 8 * 240

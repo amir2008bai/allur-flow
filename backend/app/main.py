@@ -17,6 +17,7 @@ from .learn.api import router as learn_router
 from .sim.api import router as sim_router
 from .stress_api import router as stress_router
 from .data_api import router as data_router
+from .journal import router as journal_router
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "raw" / "test_data.docx"
 
@@ -27,6 +28,7 @@ app.include_router(learn_router)
 app.include_router(copilot_router)
 app.include_router(stress_router)
 app.include_router(data_router)
+app.include_router(journal_router)
 
 
 @lru_cache
