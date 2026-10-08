@@ -18,7 +18,7 @@ type Frame = SimRun['frames'][number]
 
 const PAINTED = '#3b5b8c'
 
-function CarBody(props: { position: [number, number, number]; color?: string; scale?: number; rotY?: number; unfinished?: boolean }) {
+function CarBody(props: { position: [number, number, number]; color?: string; scale?: number; rotY?: number; unfinished?: boolean; detailed?: boolean }) {
   return <Sedan {...props} />
 }
 
@@ -58,6 +58,8 @@ function Equipment({ zone, state }: { zone: Zone; state: StationState | null }) 
       return <AssemblyLine working={working} hasBody={!!state && state !== 'starved'} />
     case 'qc':
       return <QcArch working={working} />
+    case 'warehouse_out':
+      return null
     default:
       return <Racks />
   }
@@ -85,7 +87,7 @@ function StateGlow({ zone, state }: { zone: Zone; state: StationState }) {
   )
 }
 
-/** Схематические стрелки потока; кузова показаны на участках и в накопителях. */
+/** Условный перенос кузова использует существующую фазу стрелок, не отдельные часы/VIN. */
 function FlowLink({ link, status }: { link: Link; status: LinkStatus }) {
   const x0 = link.from.x + link.from.w / 2 + 0.3
   const x1 = link.to.x - link.to.w / 2 - 0.3
@@ -97,6 +99,8 @@ function FlowLink({ link, status }: { link: Link; status: LinkStatus }) {
   const mats = useRef<THREE.MeshBasicMaterial[]>([])
   const flowOn = useRef(1)
   const previous = useRef<LinkStatus | null>(null)
+  const car = useRef<THREE.Group>(null)
+  const carMaterials = useRef<THREE.Material[]>([])
   const shape = useMemo(() => {
     const sh = new THREE.Shape()
     sh.moveTo(-0.32, -0.55); sh.lineTo(0.32, 0); sh.lineTo(-0.32, 0.55); sh.lineTo(-0.14, 0); sh.closePath()
@@ -115,10 +119,36 @@ function FlowLink({ link, status }: { link: Link; status: LinkStatus }) {
       const m = mats.current[i]
       if (m) { m.color.lerp(color, frozen ? 1 : 1 - Math.exp(-5 * dt)); m.opacity = 0.7 * flowOn.current * smoothstep(0, 0.15, u) * (1 - smoothstep(0.85, 1, u)) }
     })
+    if (car.current) {
+      const u = phase.current
+      car.current.position.x = x0 + u * len
+      // При заторе/остановке кузов остаётся на месте; пустая связь не создаёт поток.
+      const opacity = (status === 'idle' ? 0 : 1) * smoothstep(0, 0.12, u) * (1 - smoothstep(0.88, 1, u))
+      car.current.visible = opacity > 0.01
+      if (!carMaterials.current.length) car.current.traverse((o) => {
+        if (o instanceof THREE.Mesh) carMaterials.current.push(...(Array.isArray(o.material) ? o.material : [o.material]))
+      })
+      carMaterials.current.forEach((m) => {
+        const transparent = opacity < 1
+        if (m.transparent !== transparent) { m.transparent = transparent; m.needsUpdate = true }
+        m.opacity = opacity
+      })
+    }
   })
   const lane = link.buffer ? 4.6 : 0  // у буферов стрелки идут сбоку, чтобы не перекрывать кузова
   return (
     <group position={[0, 0, z]}>
+      <mesh position={[(x0 + x1) / 2, 0.025, lane]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[len, 2]} /><meshStandardMaterial color="#e3e9ef" roughness={0.9} />
+      </mesh>
+      {[-1, 1].map((side) => <mesh key={side} position={[(x0 + x1) / 2, 0.035, lane + side * 0.95]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[len, 0.055]} /><meshBasicMaterial color="#bbc9d6" />
+      </mesh>)}
+      <group ref={car} name={`transfer-${link.from.id}-${link.to.id}`} position={[x0, 0.06, lane]}>
+        <CarBody position={[0, 0, 0]} rotY={0} scale={1.45}
+          color={link.from.id === 'welding' || link.from.id === 'warehouse_in' ? '#a8b3c0' : PAINTED}
+          unfinished={link.from.id === 'warehouse_in' || link.from.id === 'welding' || link.from.id === 'paint'} />
+      </group>
       <group ref={arrows}>
         {Array.from({ length: n }, (_, i) => (
           <mesh key={i} position={[x0, 0.04, lane]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -132,12 +162,23 @@ function FlowLink({ link, status }: { link: Link; status: LinkStatus }) {
 }
 
 /** Постоянные слоты: короткий въезд/выезд без изменения размеров кузова. */
-function PopCar(props: { position: [number, number, number]; color: string; occupied: boolean; unfinished: boolean }) {
+function PopCar(props: { position: [number, number, number]; color: string; occupied: boolean; unfinished: boolean; scale?: number; rotY?: number; detailed?: boolean }) {
   const { ref, opacity } = useOccupancy(props.occupied)
   useMotionFrame(() => {
     if (ref.current) ref.current.position.x = props.position[0] - (1 - opacity.current) * 0.25
   })
-  return <group ref={ref} position={props.position}><CarBody position={[0, 0, 0]} scale={0.55} rotY={Math.PI / 2} color={props.color} unfinished={props.unfinished} /></group>
+  return <group ref={ref} position={props.position}><CarBody position={[0, 0, 0]} scale={props.scale ?? 0.55} rotY={props.rotY ?? Math.PI / 2} color={props.color} unfinished={props.unfinished} detailed={props.detailed ?? false} /></group>
+}
+
+/** Четыре условных места иллюстрируют готовые машины, не заменяют счётчик выпуска. */
+function FinishedYard({ good }: { good: number }) {
+  return <group>
+    {[-1.9, 1.9].flatMap((x, col) => [-2.6, 2.6].map((z, row) => <group key={`${x}-${z}`}>
+      <mesh position={[x, 0.22, z]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[3.3, 4.2]} /><meshStandardMaterial color="#e6ebf0" roughness={0.9} /></mesh>
+      {[-1.5, 1.5].map((dx) => <mesh key={dx} position={[x + dx, 0.23, z]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[0.07, 4]} /><meshBasicMaterial color="#ffffff" /></mesh>)}
+      <PopCar position={[x, 0.25, z]} scale={1.75} color={col === 0 ? PAINTED : '#edf0f4'} unfinished={false} detailed occupied={good > col * 2 + row} />
+    </group>))}
+  </group>
 }
 
 /** Изменение наличия кузова сглажено отдельно от часов смены, чтобы ×7200 не давало мигания. */
@@ -240,6 +281,7 @@ function ZoneBlock({ zone, frame, bottleneck }: { zone: Zone; frame: Frame | und
       {selected && <SelectionHalo w={zone.w} d={zone.d} />}
       {state && <StateGlow zone={zone} state={state} />}
       <Equipment zone={zone} state={state} />
+      {zone.id === 'warehouse_out' && <FinishedYard good={frame?.good ?? 0} />}
       {zone.station && zone.id !== 'assembly' && <StationCar zone={zone} occupied={!!hasBody} />}
       {state === 'working' && <mesh position={[0, 0.225, zone.d / 2 - 0.55]}>
         <boxGeometry args={[zone.w * 0.32, 0.025, 0.065]} />

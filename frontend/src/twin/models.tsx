@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { Drive, clamp01, damp, easeInOutCubic } from './motion'
 import { useMotionFrame } from './SceneMotion'
 import { WELD_SEAMS, weldPose, type Point3 } from './kinematics'
+import { ArmCable, AssemblyDetails, BoothDetails, JointCaps, QcDetails, RobotBaseDetails, WeldingJaws } from './ModelDetails'
 
 // Палитра в духе Apple: белый сатин, графит, анодированный алюминий — спокойно и правдоподобно (роботы ABB белые)
 const METAL = { color: '#c9ced6', roughness: 0.3, metalness: 0.7 }
@@ -15,9 +16,13 @@ const GRAPHITE = '#3a3f46'
 
 /* ───────────── Кузов-седан ───────────── */
 const sedanShape = (() => {
-  // профиль сбоку (длина по X, высота по Y), гладкие скругления
+  // Габариты и точки швов прежние; колёсные арки и проёмы делают кузов узнаваемым.
   const s = new THREE.Shape()
   s.moveTo(-0.8, 0.12)
+  s.lineTo(-0.71, 0.12)
+  s.bezierCurveTo(-0.73, 0.36, -0.31, 0.36, -0.33, 0.12)
+  s.lineTo(0.33, 0.12)
+  s.bezierCurveTo(0.31, 0.36, 0.73, 0.36, 0.71, 0.12)
   s.lineTo(0.8, 0.12)
   s.quadraticCurveTo(0.86, 0.14, 0.86, 0.26)
   s.quadraticCurveTo(0.84, 0.38, 0.62, 0.4)
@@ -28,28 +33,60 @@ const sedanShape = (() => {
   s.lineTo(-0.82, 0.4)
   s.quadraticCurveTo(-0.88, 0.32, -0.86, 0.2)
   s.closePath()
+  const rear = new THREE.Path()
+  rear.moveTo(-0.49, 0.45); rear.lineTo(-0.09, 0.45); rear.lineTo(-0.09, 0.60)
+  rear.lineTo(-0.33, 0.60); rear.quadraticCurveTo(-0.43, 0.57, -0.49, 0.45)
+  rear.closePath()
+  const front = new THREE.Path()
+  front.moveTo(-0.04, 0.45); front.lineTo(0.29, 0.45)
+  front.quadraticCurveTo(0.17, 0.60, 0.01, 0.61); front.lineTo(-0.04, 0.60); front.closePath()
+  s.holes.push(rear, front)
   return s
 })()
 const sedanGeo = (() => {
-  const g = new THREE.ExtrudeGeometry(sedanShape, { depth: 0.7, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.04, bevelSegments: 3, curveSegments: 16 })
+  const g = new THREE.ExtrudeGeometry(sedanShape, { depth: 0.7, bevelEnabled: true, bevelThickness: 0.035, bevelSize: 0.018, bevelSegments: 2, curveSegments: 12 })
   g.translate(0, 0, -0.35)
   return g
 })()
-const glassShape = (() => {
-  const s = new THREE.Shape()
-  s.moveTo(-0.5, 0.44); s.lineTo(0.3, 0.44); s.quadraticCurveTo(0.2, 0.62, 0.02, 0.63); s.lineTo(-0.34, 0.62); s.quadraticCurveTo(-0.48, 0.58, -0.5, 0.44)
-  return s
-})()
-const glassGeo = (() => { const g = new THREE.ExtrudeGeometry(glassShape, { depth: 0.74, bevelEnabled: false }); g.translate(0, 0, -0.37); return g })()
+const glassGeo = new THREE.ShapeGeometry(sedanShape.holes.map((p) => new THREE.Shape(p.getPoints(12))))
 const wheelGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.1, 24).rotateX(Math.PI / 2)
+const hubGeo = new THREE.CylinderGeometry(0.085, 0.085, 0.106, 12).rotateX(Math.PI / 2)
 
-export function Sedan({ position, color = '#f7f8fa', scale = 1, rotY = Math.PI / 2, wheels = true, unfinished = false }: { position: [number, number, number]; color?: string; scale?: number; rotY?: number; wheels?: boolean; unfinished?: boolean }) {
+export function Sedan({ position, color = '#f7f8fa', scale = 1, rotY = Math.PI / 2, wheels = true, unfinished = false, detailed = true }: { position: [number, number, number]; color?: string; scale?: number; rotY?: number; wheels?: boolean; unfinished?: boolean; detailed?: boolean }) {
   return (
     <group position={position} scale={scale} rotation={[0, rotY, 0]}>
-      <mesh castShadow><primitive object={sedanGeo} attach="geometry" /><meshStandardMaterial color={color} roughness={unfinished ? 0.5 : 0.3} metalness={0.35} /></mesh>
-      {!unfinished && <mesh><primitive object={glassGeo} attach="geometry" /><meshStandardMaterial color="#1e2833" roughness={0.15} metalness={0.55} /></mesh>}
+      <mesh castShadow geometry={sedanGeo} dispose={null}><meshStandardMaterial color={color} roughness={unfinished ? 0.48 : 0.27} metalness={unfinished ? 0.5 : 0.32} /></mesh>
+      {!unfinished && <>
+        {[-0.386, 0.386].map((z) => <mesh key={z} position={[0, 0, z]} geometry={glassGeo} dispose={null}>
+          <meshStandardMaterial color="#24384b" roughness={0.16} metalness={0.4} side={THREE.DoubleSide} />
+        </mesh>)}
+        <mesh position={[0.29, 0.54, 0]} rotation={[0, 0, 0.78]}><boxGeometry args={[0.012, 0.24, 0.61]} /><meshStandardMaterial color="#24384b" roughness={0.18} metalness={0.4} /></mesh>
+        <mesh position={[-0.46, 0.53, 0]} rotation={[0, 0, -0.7]}><boxGeometry args={[0.012, 0.23, 0.61]} /><meshStandardMaterial color="#24384b" roughness={0.18} metalness={0.4} /></mesh>
+      </>}
+      {detailed && <>
+        {[-0.392, 0.392].map((z) => <group key={z}>
+          <mesh position={[-0.066, 0.31, z]}><boxGeometry args={[0.008, 0.25, 0.009]} /><meshStandardMaterial color={unfinished ? '#8993a0' : '#1c3049'} /></mesh>
+          <mesh position={[0, 0.17, z]}><boxGeometry args={[0.61, 0.018, 0.014]} /><meshStandardMaterial {...ALU} /></mesh>
+          {!unfinished && <>
+            <mesh position={[-0.27, 0.385, z]}><boxGeometry args={[0.075, 0.016, 0.022]} /><meshStandardMaterial {...ALU} /></mesh>
+            <mesh position={[0.10, 0.385, z]}><boxGeometry args={[0.075, 0.016, 0.022]} /><meshStandardMaterial {...ALU} /></mesh>
+            <mesh position={[0.28, 0.45, z * 1.16]}><boxGeometry args={[0.095, 0.04, 0.07]} /><meshStandardMaterial color={color} roughness={0.3} /></mesh>
+          </>}
+        </group>)}
+        {!unfinished && <>
+          {[-0.24, 0.24].map((z) => <group key={z}>
+            <mesh position={[0.862, 0.32, z]}><boxGeometry args={[0.027, 0.055, 0.15]} /><meshStandardMaterial color="#eef6ff" emissive="#d4e8ff" emissiveIntensity={0.3} />
+            </mesh>
+            <mesh position={[-0.855, 0.32, z]}><boxGeometry args={[0.023, 0.05, 0.14]} /><meshStandardMaterial color="#983c43" roughness={0.3} /></mesh>
+          </group>)}
+          <mesh position={[0.872, 0.23, 0]}><boxGeometry args={[0.018, 0.07, 0.33]} /><meshStandardMaterial color="#26313b" /></mesh>
+        </>}
+      </>}
       {wheels && !unfinished && [[-0.52, 0.38], [0.52, 0.38], [-0.52, -0.38], [0.52, -0.38]].map(([x, z]) => (
-        <mesh key={`${x}${z}`} position={[x, 0.15, z]}><primitive object={wheelGeo} attach="geometry" /><meshStandardMaterial color="#1b1f24" roughness={0.8} /></mesh>
+        <group key={`${x}${z}`} position={[x, 0.15, z]}>
+          <mesh geometry={wheelGeo} dispose={null}><meshStandardMaterial color="#1b1f24" roughness={0.85} /></mesh>
+          {detailed && <mesh geometry={hubGeo} dispose={null}><meshStandardMaterial {...ALU} /></mesh>}
+        </group>
       ))}
     </group>
   )
@@ -143,18 +180,24 @@ export function WeldRobot({ x, z, working, phase, flip = false }: { x: number; z
   })
   return (
     <group position={[x, 0.2, z]}>
+      <RobotBaseDetails />
       <mesh castShadow position={[0, 0.16, 0]}><cylinderGeometry args={[0.62, 0.7, 0.32, 48]} /><meshStandardMaterial color={GRAPHITE} roughness={0.55} metalness={0.2} /></mesh>
       <group ref={turn} position={[0, 0.32, 0]} rotation={[0, initial[0], 0]}>
         <mesh castShadow position={[0, 0.24, 0]}><cylinderGeometry args={[0.46, 0.5, 0.48, 48]} /><meshStandardMaterial {...ROBOT_SHELL} /></mesh>
         <group ref={shoulder} position={[0, 0.55, 0]} rotation={[0, 0, initial[1]]}>
+          <JointCaps radius={0.27} width={0.62} />
+          <ArmCable length={1.7} />
           <mesh castShadow rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.27, 0.27, 0.62, 32]} /><meshStandardMaterial color={GRAPHITE} roughness={0.45} metalness={0.3} /></mesh>
           <RoundedBox args={[0.36, 1.7, 0.36]} radius={0.15} smoothness={6} position={[0, 0.85, 0]} castShadow><meshStandardMaterial {...ROBOT_SHELL} /></RoundedBox>
           <mesh position={[-0.22, 0.85, 0]}><boxGeometry args={[0.045, 1.3, 0.12]} /><meshStandardMaterial color={GRAPHITE} /></mesh>
           <group ref={elbow} position={[0, 1.7, 0]} rotation={[0, 0, initial[2]]}>
+            <JointCaps radius={0.21} width={0.5} />
+            <ArmCable length={1.3} />
             <mesh castShadow rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.21, 0.21, 0.5, 32]} /><meshStandardMaterial color={GRAPHITE} roughness={0.45} metalness={0.3} /></mesh>
             <RoundedBox args={[0.28, 1.3, 0.28]} radius={0.12} smoothness={6} position={[0, 0.65, 0]} castShadow><meshStandardMaterial {...ROBOT_SHELL} /></RoundedBox>
             <mesh position={[-0.18, 0.65, 0]}><boxGeometry args={[0.04, 0.95, 0.1]} /><meshStandardMaterial color={GRAPHITE} /></mesh>
             <group ref={wrist} position={[0, 1.3, 0]} rotation={[0, 0, initial[3]]}>
+              <WeldingJaws />
               <mesh castShadow><sphereGeometry args={[0.16, 32, 32]} /><meshStandardMaterial color={GRAPHITE} roughness={0.4} metalness={0.3} /></mesh>
               <mesh castShadow position={[0, 0.3, 0]}><cylinderGeometry args={[0.045, 0.085, 0.5, 24]} /><meshStandardMaterial {...METAL} /></mesh>
               <object3D ref={tip} position={[0, 0.58, 0]} />
@@ -217,6 +260,7 @@ export function PaintBooth({ working }: { working: boolean }) {
   const posts: [number, number][] = [[-4.5, -3], [4.5, -3], [-4.5, 3], [4.5, 3]]
   return (
     <group>
+      <BoothDetails />
       {/* стекло камеры: чистое, едва заметное — видно, что внутри */}
       <mesh position={[0, 2.1, 0]}>
         <boxGeometry args={[9, 4, 6]} />
@@ -270,6 +314,7 @@ export function AssemblyLine({ working, hasBody }: { working: boolean; hasBody: 
   })
   return (
     <group>
+      <AssemblyDetails />
       <RoundedBox args={[16.4, 0.25, 2.4]} radius={0.06} smoothness={4} position={[0, 0.42, 0]} receiveShadow castShadow><meshStandardMaterial color="#4b525b" roughness={0.55} metalness={0.35} /></RoundedBox>
       {[-1.25, 1.25].map((z) => <mesh key={z} position={[0, 0.6, z]}><boxGeometry args={[16.4, 0.1, 0.08]} /><meshStandardMaterial color="#e8b931" roughness={0.5} /></mesh>)}
       <group ref={slats}>
@@ -320,6 +365,7 @@ export function QcArch({ working }: { working: boolean }) {
   })
   return (
     <group>
+      <QcDetails />
       {[-1.9, 1.9].map((z) => <RoundedBox key={z} args={[0.4, 3.4, 0.4]} radius={0.1} smoothness={6} position={[0, 1.7, z]} castShadow><meshStandardMaterial color="#f2f3f5" roughness={0.3} /></RoundedBox>)}
       <RoundedBox args={[0.8, 0.4, 4.2]} radius={0.12} smoothness={6} position={[0, 3.4, 0]} castShadow><meshStandardMaterial color="#f2f3f5" roughness={0.3} /></RoundedBox>
       {[-1.7, 1.7].map((z, i) => <mesh key={z} position={[0, 1.7, z * 0.97]}><boxGeometry args={[0.04, 2.8, 0.04]} /><meshStandardMaterial ref={(m) => { if (m) strips.current[i] = m }} color="#7dd3fc" emissive="#7dd3fc" emissiveIntensity={0.15} toneMapped={false} /></mesh>)}
