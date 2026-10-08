@@ -54,3 +54,11 @@ def test_copilot_knows_new_twin_features_offline():
         r = ask(q, offline=True, scenario="base", seed=7, view=view)
         assert tool in [t["name"] for t in r["tools"]], q
         assert r["unverified"] == [] and r["verified"], q
+
+
+def test_offline_copilot_answers_control_chart_and_downtime_cost():
+    from app.copilot.agent import ask
+    a = ask("Брак окраски — случайность или проблема?", offline=True)
+    assert any(t["name"] == "get_paint_control_chart" for t in a["tools"]) and not a["unverified"]
+    b = ask("Что ремонтировать первым?", offline=True)
+    assert any(t["name"] == "get_downtime_cost" for t in b["tools"]) and "Сборка" in b["answer"] and not b["unverified"]

@@ -11,7 +11,7 @@ import type { ZoneId } from './twin/layout'
 interface Reply { answer: string; model: string; mode: 'llm' | 'offline'; sources: string[]; unverified: string[]; verified?: { label: string; value: string; note: string }[]; actions: { type: string; zone: ZoneId }[]; fallback_reason?: string }
 interface Msg { role: 'user' | 'assistant'; text: string; meta?: Reply }
 
-const CHIPS = ['Что сейчас происходит?', 'Успеем выполнить план смены?', 'Что если сейчас встанет сборка на час?', 'Выполним план месяца?', 'Что сделать, чтобы выполнить план?', 'Соблюдаем нормы ТЗ?']
+const CHIPS = ['Что сейчас происходит?', 'Успеем выполнить план смены?', 'Что если сейчас встанет сборка на час?', 'Выполним план месяца?', 'Что сделать, чтобы выполнить план?', 'Соблюдаем нормы ТЗ?', 'Брак окраски — случайность или проблема?', 'Что ремонтировать первым?']
 
 /** **жирный** → <b>, остальная разметка убирается. */
 function Rich({ text }: { text: string }) {

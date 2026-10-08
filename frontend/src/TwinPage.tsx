@@ -9,6 +9,8 @@ import Actions from './twin/Actions'
 import ShiftBuilder, { parseCfg, toCfg } from './twin/ShiftBuilder'
 import EtaPanel from './twin/EtaPanel'
 import MonthJournal from './twin/MonthJournal'
+import PaintSpc from './twin/PaintSpc'
+import StationValue from './twin/StationValue'
 import { ZONES } from './twin/layout'
 import Timeline from './twin/Timeline'
 import ZonePanel from './twin/ZonePanel'
@@ -145,10 +147,14 @@ export default function TwinPage() {
 
       <div id="journal" className="scroll-mt-20">{offline ? <NeedServer what="Журнал смен хранится на сервере." /> : <MonthJournal />}</div>
 
+      <div id="paint-spc" className="scroll-mt-20">{offline ? <NeedServer what="Контрольная карта брака строится на сервере по журналу дней." /> : <PaintSpc />}</div>
+
       {run && (
         <>
 
           <Actions whatif={whatif} onFutures={(id) => { setFutures(id); document.getElementById('twin-viewer')?.scrollIntoView({ behavior: 'smooth' }) }} />
+
+          <div id="station-value" className="scroll-mt-20">{offline ? <NeedServer what="Цена простоя считается двойником на сервере." /> : <StationValue />}</div>
 
           <Dashboard run={run} />
 

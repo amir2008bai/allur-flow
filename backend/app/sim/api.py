@@ -407,3 +407,50 @@ def line() -> dict:
     """Описание линии из файла настроек (data/line.json): участки, оборудование, параметры, накопители."""
     from .params import LINE, LINE_FILE
     return {"source": "config", "file": LINE_FILE.name, **{k: v for k, v in LINE.items() if not k.startswith("_")}}
+
+
+# ── Цена минуты простоя и проверка узкого места «+1 час» ─────────────────────────────────────────
+VALUE_STATIONS = ("welding", "paint", "assembly")
+STOP_STARTS = (60, 200, 340)     # час простоя в разные моменты первой смены — результат не зависит от одного удачного момента
+VALUE_REPS = 12
+EXTRA_MIN = 60                   # «+1 час работы участка в смену» = цикл короче в 480/540 раза
+
+
+@lru_cache(maxsize=8)
+def _station_value(ver: str, reps: int) -> dict:
+    """Сколько машин теряет линия за час простоя каждого участка и сколько даёт +1 час его работы.
+    Одинаковые случайные числа (CRN): разница только из-за простоя/ускорения. Минута участка, которого
+    прикрывают накопители, стоит дешевле; минута ограничителя — дороже всех: она теряется для всего завода."""
+    import numpy as np
+    from dataclasses import replace
+    from .params import ForcedDown
+    from .whatif import paired_ci
+    base = twin_overlay(SCENARIOS["base"])
+    seeds = [7000 + i for i in range(reps)]
+    g0 = np.array([simulate(base, s).good_out for s in seeds], dtype=float)
+    shifts = base.horizon / base.shift_minutes
+    rows = []
+    for st in VALUE_STATIONS:
+        loss = []
+        for at in STOP_STARTS:
+            p = base.with_(forced_downs=base.forced_downs + (ForcedDown(st, float(at), 60.0, reason="проверка: час простоя"),))
+            loss += list(g0 - np.array([simulate(p, s).good_out for s in seeds], dtype=float))
+        m, lo, hi = paired_ci(np.array(loss))
+        sp = base.stations[st]
+        p2 = base.with_(stations={**base.stations, st: replace(sp, cycle=sp.cycle * base.shift_minutes / (base.shift_minutes + EXTRA_MIN))})
+        gain = (np.array([simulate(p2, s).good_out for s in seeds], dtype=float) - g0) / shifts
+        gm, glo, ghi = paired_ci(gain)
+        rows.append({"station": st, "name": STATION_RU[st], "loss_per_hour": m, "loss_ci": [lo, hi], "loss_per_min": m / 60,
+                     "gain_per_hour": gm, "gain_ci": [glo, ghi]})
+    top = max(rows, key=lambda r: r["gain_per_hour"])
+    for r in rows:
+        r["limits_output"] = r is top and r["gain_ci"][0] > 0
+    return {"source": "sim", "reps": reps * len(STOP_STARTS), "gain_reps": reps, "stations": rows, "constraint": top["station"] if top["gain_ci"][0] > 0 else None,
+            "twin": twin_context(),
+            "method": "Час простоя участка в разные моменты смены против той же смены без него (одинаковые случайные события); "
+                      "+1 час — участок работает так, будто у него в смене 9 ч вместо 8. Числа — из двойника, с 95% интервалом."}
+
+
+@router.get("/station_value")
+def station_value(reps: int = Query(VALUE_REPS, ge=4, le=30)) -> dict:
+    return _station_value(twin_context()["version"], reps)

@@ -244,10 +244,37 @@ def get_norms() -> dict:
                                 "качество_с_первого_раза_pct": round(side["oee_parts"]["quality"])}} if side.get("oee_parts") else {})}
 
 
+def get_paint_control_chart() -> dict:
+    """Контрольная карта брака окраски: обычный разброс или особая причина, средний уровень против нормы."""
+    from ..spc import paint
+    c = paint(_today_iso())
+    pts = c["points"]
+    return {"source": "контрольная карта Шухарта (дни с данными завода — факт, остальные — двойник)",
+            "вывод": c["verdict"]["title"], "пояснение": c["verdict"]["text"],
+            "средний_уровень_брака_pct": round(100 * c["pbar"], 1), "норма_pct": round(100 * c["norm"], 1), "дней_на_карте": len(pts),
+            "дни_с_особой_причиной": [{"день": p["day"], "брак_pct": round(100 * p["p"], 1), "сигнал": "; ".join(p["signals"])} for p in pts if p["signals"]],
+            "последний_день": {"день": pts[-1]["day"], "брак_pct": round(100 * pts[-1]["p"], 1), "граница_разброса_pct": round(100 * pts[-1]["ucl"], 1)} if pts else None}
+
+
+def get_downtime_cost() -> dict:
+    """Цена минуты простоя каждого участка и проверка ограничителя «+1 час работы»."""
+    from ..sim.api import station_value
+    v = station_value(12)
+    m = avg_margin(_facts())
+    rows = sorted(v["stations"], key=lambda r: -r["loss_per_min"])
+    return {"source": "симуляция двойника, одинаковые случайные события",
+            "участки": [{"участок": r["name"], "потеря_машин_за_час_простоя": round(r["loss_per_hour"], 1),
+                         "минута_простоя_тг": int(round(r["loss_per_min"] * m, -3)), "плюс_час_работы_машин_за_смену": round(r["gain_per_hour"], 1),
+                         "ограничитель": r["limits_output"]} for r in rows],
+            "ремонтировать_первым": rows[0]["name"], "средняя_маржа_с_машины_тг": int(round(m, -3)),
+            "примечание": "маржа — допущение A8; «+1 час» даёт машины только ограничителю"}
+
+
 REGISTRY = {"get_current_view": get_current_view, "get_line_status": get_line_status, "compare_actions": compare_actions, "get_paint_quality": get_paint_quality,
             "get_data_findings": get_data_findings, "get_learning_status": get_learning_status, "focus_3d": focus_3d,
             "get_shift_forecast": get_shift_forecast, "simulate_stop": simulate_stop, "get_month_forecast": get_month_forecast,
-            "get_day_report": get_day_report, "get_norms": get_norms}
+            "get_day_report": get_day_report, "get_norms": get_norms, "get_paint_control_chart": get_paint_control_chart,
+            "get_downtime_cost": get_downtime_cost}
 
 SCENARIO_ENUM = ["base", "paint_degradation", "conveyor_break"]
 SCHEMAS = [
@@ -273,6 +300,10 @@ SCHEMAS = [
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "get_day_report", "description": "Отчёт журнала за день: план, факт по сменам, утренний прогноз против факта, что съело машины, нарушения норм. Без даты — день на экране.",
         "parameters": {"type": "object", "properties": {"date": {"type": "string", "description": "ГГГГ-ММ-ДД"}}}}},
+    {"type": "function", "function": {"name": "get_paint_control_chart", "description": "Контрольная карта брака окраски: брак дня — обычный разброс или особая причина; средний уровень против нормы 2%; дни с особой причиной.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "get_downtime_cost", "description": "Цена минуты простоя каждого участка (машины и тенге), какой ремонт делать первым, какой участок ограничивает выпуск (+1 час работы).",
+        "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "get_norms", "description": "Нормы ТЗ против текущей смены: брак окраски (норма 2%), простой худшего участка (лимит 60 мин/сутки), OEE (цель 85%).",
         "parameters": {"type": "object", "properties": {}}}},
 ]

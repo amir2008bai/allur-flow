@@ -20,6 +20,7 @@ from .data_api import router as data_router
 from .journal import router as journal_router
 from .trust import router as trust_router
 from .live import router as live_router
+from .spc import router as spc_router
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "raw" / "test_data.docx"
 
@@ -33,6 +34,7 @@ app.include_router(data_router)
 app.include_router(journal_router)
 app.include_router(trust_router)
 app.include_router(live_router)
+app.include_router(spc_router)
 
 WARMUP = {"done": False, "steps": [], "seconds": None}
 
@@ -49,6 +51,8 @@ def _warmup() -> None:
         ("прогноз к концу смены", lambda: __import__("app.sim.api", fromlist=["eta"]).eta("base", 7, 0)),
         ("журнал и прогноз месяца", lambda: __import__("app.journal", fromlist=["month"]).month(date.today().isoformat()[:7], date.today().isoformat())),
         ("обучение", lambda: __import__("app.learn.api", fromlist=["forecast_payload"]).forecast_payload()),
+        ("контрольная карта брака", lambda: __import__("app.spc", fromlist=["paint"]).paint(date.today().isoformat())),
+        ("цена минуты простоя", lambda: __import__("app.sim.api", fromlist=["station_value"]).station_value(12)),
         ("панель доверия", lambda: __import__("app.trust", fromlist=["trust"]).trust()),
         ("журнал обучения", lambda: (__import__("app.learn.api", fromlist=["alerts"]).alerts(), __import__("app.learn.api", fromlist=["calib"]).calib())),
     ]

@@ -233,3 +233,32 @@ def test_factory_stop_placed_in_shift_where_it_fits():
     r = journal.record(date(2026, 10, 2))
     s1 = r["shifts"][0]
     assert abs(s1["twin"] - s1["fact"]) <= 8 and s1["in_corridor"]
+
+
+def test_paint_control_chart_separates_noise_from_special_cause():
+    # контрольная карта: границы 3σ, сигналы Western Electric, вывод «хронически выше нормы» при стабильном процессе
+    from app.spc import chart, paint
+    flat = [{"day": f"2026-09-{i + 1:02d}", "n": 240, "defects": 11, "source": "sim"} for i in range(20)]
+    c = chart([dict(p) for p in flat], 0.02)
+    assert c["verdict"]["kind"] == "chronic" and not any(p["signals"] for p in c["points"])   # 4,6% стабильно — не «плохие дни»
+    spike = [dict(p) for p in flat]
+    spike[-1]["defects"] = 40                                                                    # 16,7% — далеко за границей
+    c = chart(spike, 0.02)
+    assert c["verdict"]["kind"] == "special" and "выше верхней границы" in c["points"][-1]["signals"][0]
+    assert abs(c["pbar"] - 11 / 240) < 1e-9                                                     # особый день не тянет среднюю
+    trend = [dict(p, defects=8 + i) for i, p in enumerate(flat[:6])]
+    assert any("растут" in s for s in chart(trend, 0.02)["points"][-1]["signals"])
+    r = paint("2026-10-08")
+    assert r["facts"] == 2 and len(r["points"]) == 20                                          # 01–02.10 — из данных завода
+    f = next(p for p in r["points"] if p["day"] == "2026-10-02")
+    assert f["source"] == "fact" and (f["n"], f["defects"]) == (116, 6)
+
+
+def test_downtime_cost_finds_constraint_by_extra_hour():
+    # цена минуты простоя: час простоя любого участка стоит машин; «+1 час» даёт машины только ограничителю
+    from app.sim.api import station_value
+    v = station_value(6)
+    rows = {r["station"]: r for r in v["stations"]}
+    assert all(r["loss_per_hour"] > 0 for r in rows.values())
+    assert v["constraint"] == "assembly" and rows["assembly"]["gain_ci"][0] > 0
+    assert rows["assembly"]["loss_per_min"] == max(r["loss_per_min"] for r in rows.values())
