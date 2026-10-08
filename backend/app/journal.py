@@ -4,7 +4,7 @@
 нарушения норм ТЗ (брак ≤ 2%, простой оборудования ≤ 60 мин/сутки, OEE ≥ 85%). Запись дня делается один раз
 и хранится в SQLite (таблица journal) — это история, а не пересчёт.
 
-Прогноз месяца: факт с 1-го числа + будущие рабочие дни (двойник: 240 типичных дней — штатные, с авариями,
+Прогноз месяца: факт с 1-го числа + будущие рабочие дни (двойник: 400 типичных дней — штатные, с авариями,
 с засором фильтра; дни ТО — отдельно). Выходные по умолчанию сб/вс; любой будущий день можно отметить
 «рабочий / выходной / ТО 4 ч» (таблица calendar_marks).
 
@@ -15,6 +15,7 @@ from __future__ import annotations
 import calendar
 import json
 import time
+from threading import RLock
 from collections import defaultdict
 from datetime import date as Date
 from datetime import timedelta
@@ -220,8 +221,11 @@ def _perturb(p, rng, unc: dict):
     return p.with_(stations=st)
 
 
+_forecast_lock = RLock()
+
+
 @lru_cache(maxsize=4)
-def _day_dist(ver: str):
+def _cached_day_dist(ver: str):
     """Выпуск за день по наборам параметров: [набор][день]. В каждом наборе — типичные дни (те же правила условий,
     что у журнала) и дни с ТО 4 ч. Наборы различаются параметрами двойника в пределах их неточности —
     так прогноз месяца учитывает не только случайность дней, но и то, что двойник знает завод по немногим дням данных."""
@@ -243,6 +247,19 @@ def _day_dist(ver: str):
         ma = [simulate(maint_p, 60_000 + k * MAINT_PER_SET + j).good_out for j in range(MAINT_PER_SET)]
         typical.append(ty); maint.append(ma)
     return np.array(typical, dtype=float), np.array(maint, dtype=float)
+
+
+def _day_dist(ver: str):
+    # Прогрев и несколько экранов могут одновременно запросить один прогноз.
+    # Проверка кеша под замком: 520 прогонов выполняются только один раз.
+    with _forecast_lock:
+        return _cached_day_dist(ver)
+
+
+def clear_forecast_cache() -> None:
+    # Новая выгрузка меняет также объём истории/неопределённость параметров.
+    with _forecast_lock:
+        _cached_day_dist.cache_clear()
 
 
 def _month_days(y: int, m: int):
@@ -274,7 +291,8 @@ def month(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"), today: str = Query(
     past = [x for x in days if x["kind"] != "off"]
     fact = sum(x["fact"] for x in past)
     plan_to_date = PLAN_DAY * len(past)
-    typical, maint = _day_dist(twin_context()["version"])
+    context = twin_context()
+    typical, maint = _day_dist(context["version"])
     rng = np.random.default_rng(7)
     sims = np.full(4000, float(fact))
     world = rng.integers(0, typical.shape[0], size=sims.size)   # у каждого «возможного месяца» — свой набор параметров на все дни
@@ -297,6 +315,8 @@ def month(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"), today: str = Query(
             "corridor_fact": {"hits": sum(x["fact_hits"] for x in past), "shifts": sum(x["fact_shifts"] for x in past), "source": "fact"},
             "forecast": {"total_mean": float(sims.mean()), "total_range": [float(np.percentile(sims, 10)), float(np.percentile(sims, 90))],
                          "p_plan": float((sims >= plan_month).mean()), "remaining_days": remaining_days, "source": "forecast",
+                         "model": "SimPy", "twin_version": context["version"], "learned": context["learned"],
+                         "typical_days": PARAM_SETS * DAYS_PER_SET, "maintenance_days": PARAM_SETS * MAINT_PER_SET,
                          "param_uncertainty": {"sets": PARAM_SETS, "data_days": param_uncertainty()["days"]}},
             "plans": {"month": plan_month, "by_days": PLAN_DAY * work_days, "by_models": models_plan(), "work_days": work_days,
                       "need_per_day": ((plan_month - fact) / remaining_days) if remaining_days else None, "daily": PLAN_DAY}}

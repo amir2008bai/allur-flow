@@ -1,15 +1,16 @@
-import { AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Play, Wrench, XCircle } from 'lucide-react'
+import { AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Play, RefreshCw, Wrench, XCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { longDate, todayISO } from '../dates'
 import { Card, SourceBadge } from '../ui'
 import { useView } from './store'
+import { journalRequest } from './journalRequest'
 
 type Kind = 'work' | 'off' | 'maint'
 interface DayCell { day: string; kind: Kind; fact?: number; plan?: number; pct?: number; hits?: number; norms?: number; today?: boolean; forecast?: number; lo?: number; hi?: number; has_facts?: boolean }
 interface Month {
   month: string; days_in_month: number; first_weekday: number; days: DayCell[]; fact: number; plan_to_date: number; corridor_hits: number; shifts_total: number
   corridor_fact?: { hits: number; shifts: number }
-  forecast: { total_mean: number; total_range: [number, number]; p_plan: number; remaining_days: number; param_uncertainty?: { sets: number; data_days: number } }
+  forecast: { total_mean: number; total_range: [number, number]; p_plan: number; remaining_days: number; param_uncertainty?: { sets: number; data_days: number }; learned?: boolean; typical_days?: number; maintenance_days?: number }
   plans: { month: number; by_days: number; by_models: number; work_days: number; need_per_day: number | null; daily: number }
 }
 interface ShiftRec { shift: number; plan: number; fact: number; source?: 'fact' | 'sim'; twin?: number; forecast: { mean: number; lo: number; hi: number; p_plan: number }; in_corridor: boolean }
@@ -42,19 +43,40 @@ export default function MonthJournal() {
   const [rec, setRec] = useState<DayRec | null>(null)
   const [future, setFuture] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [monthError, setMonthError] = useState<string | null>(null)
+  const [dayError, setDayError] = useState<string | null>(null)
+  const [markError, setMarkError] = useState<string | null>(null)
+  const [savingMark, setSavingMark] = useState(false)
+  const retry = () => setTick((x) => x + 1)
 
   useEffect(() => { setMonth(date.slice(0, 7)) }, [date])
+  useEffect(() => { setFuture(null) }, [month])
   useEffect(() => {
     let alive = true
-    fetch(`/api/journal/month?month=${month}&today=${today}`).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive) setM(d) }).catch(() => {})
-    return () => { alive = false }
+    const controller = new AbortController()
+    setLoading(true); setMonthError(null)
+    journalRequest<Month>(`/api/journal/month?month=${month}&today=${today}`, { signal: controller.signal })
+      .then((data) => {
+        if (!Array.isArray(data.days) || data.month !== month || !data.forecast || !data.plans) throw new Error('Сервер вернул неполный журнал. Попробуйте ещё раз.')
+        if (alive) setM(data)
+      })
+      .catch((error: Error) => { if (alive) setMonthError(error.message) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false; controller.abort() }
   }, [month, today, tick])
   useEffect(() => {
     let alive = true
-    setRec(null)
-    fetch(`/api/journal/day?date=${date}&today=${today}`).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive) setRec(d) }).catch(() => {})
-    return () => { alive = false }
-  }, [date, today])
+    const controller = new AbortController()
+    setRec(null); setDayError(null)
+    journalRequest<DayRec>(`/api/journal/day?date=${date}&today=${today}`, { signal: controller.signal })
+      .then((data) => {
+        if (data.day !== date) throw new Error('Не удалось получить запись выбранного дня.')
+        if (alive) setRec(data)
+      })
+      .catch((error: Error) => { if (alive) setDayError(error.message) })
+    return () => { alive = false; controller.abort() }
+  }, [date, today, tick])
 
   const replay = () => {
     if (!rec?.scenario) return
@@ -63,11 +85,18 @@ export default function MonthJournal() {
     document.getElementById('twin-viewer')?.scrollIntoView({ behavior: 'smooth' })
   }
   const markDay = async (day: string, kind: Kind | 'auto') => {
-    await fetch('/api/journal/mark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ day, kind, today }) }).catch(() => {})
-    setTick((x) => x + 1)
+    setSavingMark(true); setMarkError(null)
+    try {
+      await journalRequest('/api/journal/mark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ day, kind, today }), timeoutMs: 15_000 })
+      retry()
+    } catch (error) {
+      setMarkError(error instanceof Error ? error.message : 'Не удалось сохранить отметку дня.')
+    } finally { setSavingMark(false) }
   }
 
-  if (!m) return <Card className="p-5 text-sm text-slate-500">Собираю журнал месяца…</Card>
+  if (!m || m.month !== month) return <Card className="p-5 text-sm text-slate-500">
+    {monthError ? <JournalError message={monthError} retry={retry} /> : <div role="status">Собираю журнал и прогноз месяца… При первом запуске расчёт может занять до минуты.</div>}
+  </Card>
   const byDay = Object.fromEntries(m.days.map((d) => [Number(d.day.slice(8)), d]))
   const cells: (number | null)[] = [...Array(m.first_weekday).fill(null), ...Array.from({ length: m.days_in_month }, (_, i) => i + 1)]
   const [y, mm] = month.split('-').map(Number)
@@ -85,8 +114,15 @@ export default function MonthJournal() {
             <p className="text-sm text-slate-500">Прошедшие дни — запись смен. Будущие — прогноз двойника.</p>
           </div>
         </div>
-        <SourceBadge source="sim" />
+        <div className="flex items-center gap-2">
+          <button onClick={retry} disabled={loading || savingMark} className="flex items-center gap-1.5 rounded-xl bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50" aria-label="Обновить журнал"><RefreshCw size={14} />Обновить</button>
+          <SourceBadge source="sim" />
+        </div>
       </div>
+      {loading && <div role="status" className="mb-3 text-xs text-slate-500">Обновляю журнал и прогноз…</div>}
+      {monthError && <JournalError message={`${monthError} Показан последний загруженный журнал.`} retry={retry} />}
+      {markError && <JournalError message={`Отметка дня не сохранена. ${markError}`} />}
+
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         {/* календарь месяца */}
@@ -171,8 +207,10 @@ export default function MonthJournal() {
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-600"><SourceBadge source="fact" />Сверка с данными завода: утренний прогноз попал в коридор в <b className="tabular-nums">{m.corridor_fact.hits} из {m.corridor_fact.shifts}</b> смен</div>
             )}
             {fc.param_uncertainty && <div className="mt-1.5 text-[11px] text-slate-500">Коридор широкий честно: двойник знает завод по {fc.param_uncertainty.data_days} дн. данных, поэтому учтены {fc.param_uncertainty.sets} правдоподобных вариантов его параметров (брак, частота и длительность поломок). Больше данных — уже коридор.</div>}
-            <div className="mt-1.5 text-[11px] text-slate-400">Самопроверка двойника (симуляция сверяется сама с собой, это проверка расчёта, а не точности): {m.corridor_hits} из {m.shifts_total} смен в коридоре · будущие дни — 240 типичных дней двойника (штатные, с авариями, с засором фильтра)</div>
+            <div className="mt-1.5 text-[11px] text-slate-400">Самопроверка двойника (симуляция сверяется сама с собой, это проверка расчёта, а не точности): {m.corridor_hits} из {m.shifts_total} смен в коридоре · будущие дни — {fc.typical_days ?? 400} типичных дней двойника (штатные, с авариями, с засором фильтра), ТО — отдельно</div>
           </div>
+
+          <p className="text-[11px] text-slate-500">При обновлении прогноз учитывает загруженные данные и уточнения линии. Уточнение модели не переписывает прошлые итоги.{fc.learned && ' Учтены уточнения по обратной связи.'}</p>
 
           {fd && future ? (
             <div className="rounded-2xl p-4 ring-1 ring-slate-200">
@@ -181,14 +219,14 @@ export default function MonthJournal() {
               <div className="mt-3 text-xs text-slate-500">Отметить день — прогноз месяца пересчитается:</div>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {(['work', 'maint', 'off'] as const).map((k) => (
-                  <button key={k} onClick={() => markDay(future, k)} className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium ring-1 transition active:scale-95 ${fd.kind === k ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-100'}`}>
+                  <button key={k} onClick={() => markDay(future, k)} disabled={savingMark || loading} className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium ring-1 transition active:scale-95 ${fd.kind === k ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-100'}`}>
                     {k === 'maint' && <Wrench size={12} />}{KIND_RU[k]}
                   </button>
                 ))}
-                <button onClick={() => markDay(future, 'auto')} className="rounded-lg px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-100">по умолчанию</button>
+                <button onClick={() => markDay(future, 'auto')} disabled={savingMark || loading} className="rounded-lg px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-100">по умолчанию</button>
               </div>
             </div>
-          ) : !rec ? <div className="text-sm text-slate-400">Загружаю запись дня…</div> : rec.in_progress ? (
+          ) : dayError ? <JournalError message={dayError} retry={retry} /> : !rec ? <div role="status" className="text-sm text-slate-400">Загружаю запись дня…</div> : rec.in_progress ? (
             <div className="rounded-2xl p-4 ring-1 ring-sky-200">
               <div className="font-semibold first-letter:uppercase">{longDate(rec.day)} · сегодня</div>
               <div className="mt-1 text-sm text-slate-600">Смена идёт — итог дня запишется в журнал после его окончания. Прогноз к концу смены — под шкалой времени у сцены.</div>
@@ -243,4 +281,11 @@ export default function MonthJournal() {
       </div>
     </Card>
   )
+}
+
+function JournalError({ message, retry }: { message: string; retry?: () => void }) {
+  return <div role="alert" className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+    <div>{message}</div>
+    {retry && <button onClick={retry} className="mt-2 rounded-lg bg-white px-3 py-2 font-medium ring-1 ring-amber-200 hover:bg-amber-100">Повторить</button>}
+  </div>
 }
