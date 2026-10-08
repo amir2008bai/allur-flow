@@ -1,0 +1,3 @@
+﻿lever;delta_cars_per_shift;ci95_lo;ci95_hi;downtime_min_per_shift_before;downtime_min_per_shift_after;oee_before;oee_after;cost_month_kzt;cost_once_kzt;source
+Дежурный наладчик на линии + Разгрузить самый загруженный пост сборки;8.5;7.36;9.64;49.2;26.1;84.4;90.5;1000000;500000;sim
+Брак окраски до нормы 2%;0.23;0.0;0.45;49.2;49.2;84.4;84.6;;;sim

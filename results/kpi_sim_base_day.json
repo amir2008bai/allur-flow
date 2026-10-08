@@ -1,0 +1,31 @@
+{
+ "source": "sim",
+ "seed": 7,
+ "good_per_shift": 126.0,
+ "oee_pct": 89.25,
+ "oee_parts": {
+  "availability": 100.0,
+  "performance": 96.798153723337,
+  "quality": 92.20217180493886,
+  "planned_min": 0.0,
+  "availability_loss_min": 0.0,
+  "cars": {
+   "ideal": 282.3529411764706,
+   "availability": 0.0,
+   "performance": 9.040507134107328,
+   "quality": 21.31243404236329,
+   "good": 252.0
+  },
+  "cars_by": {
+   "availability": {},
+   "quality": {
+    "welding": 9.703808646936766,
+    "paint": 9.508517853225538,
+    "assembly": 2.1001075422009827
+   },
+   "planned_min": 0.0
+  }
+ },
+ "oee_note": "допущение: идеальный цикл линии 3.4 мин; плановые остановки в OEE не входят",
+ "bottleneck": "welding"
+}

@@ -1,0 +1,288 @@
+{
+ "month": "2026-10",
+ "days_in_month": 31,
+ "first_weekday": 3,
+ "source": "sim",
+ "days": [
+  {
+   "day": "2026-10-01",
+   "kind": "work",
+   "fact": 239,
+   "plan": 240,
+   "pct": 99.58333333333333,
+   "scenario": "day:2026-10-01",
+   "hits": 2,
+   "norms": 2,
+   "has_facts": true,
+   "fact_hits": 1,
+   "fact_shifts": 1
+  },
+  {
+   "day": "2026-10-02",
+   "kind": "work",
+   "fact": 224,
+   "plan": 240,
+   "pct": 93.33333333333333,
+   "scenario": "day:2026-10-02",
+   "hits": 1,
+   "norms": 3,
+   "has_facts": true,
+   "fact_hits": 1,
+   "fact_shifts": 1
+  },
+  {
+   "day": "2026-10-03",
+   "kind": "off"
+  },
+  {
+   "day": "2026-10-04",
+   "kind": "off"
+  },
+  {
+   "day": "2026-10-05",
+   "kind": "work",
+   "fact": 230,
+   "plan": 240,
+   "pct": 95.83333333333333,
+   "scenario": "base",
+   "hits": 2,
+   "norms": 5,
+   "has_facts": false,
+   "fact_hits": 0,
+   "fact_shifts": 0
+  },
+  {
+   "day": "2026-10-06",
+   "kind": "work",
+   "fact": 226,
+   "plan": 240,
+   "pct": 94.16666666666667,
+   "scenario": "cfg:||welding@407+95",
+   "hits": 2,
+   "norms": 5,
+   "has_facts": false,
+   "fact_hits": 0,
+   "fact_shifts": 0
+  },
+  {
+   "day": "2026-10-07",
+   "kind": "work",
+   "fact": 241,
+   "plan": 240,
+   "pct": 100.41666666666667,
+   "scenario": "cfg:||welding@277+25",
+   "hits": 2,
+   "norms": 2,
+   "has_facts": false,
+   "fact_hits": 0,
+   "fact_shifts": 0
+  },
+  {
+   "day": "2026-10-08",
+   "kind": "work",
+   "today": true,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-09",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-10",
+   "kind": "off",
+   "today": false
+  },
+  {
+   "day": "2026-10-11",
+   "kind": "off",
+   "today": false
+  },
+  {
+   "day": "2026-10-12",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-13",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-14",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-15",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-16",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-17",
+   "kind": "off",
+   "today": false
+  },
+  {
+   "day": "2026-10-18",
+   "kind": "off",
+   "today": false
+  },
+  {
+   "day": "2026-10-19",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-20",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-21",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-22",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-23",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-24",
+   "kind": "off",
+   "today": false
+  },
+  {
+   "day": "2026-10-25",
+   "kind": "off",
+   "today": false
+  },
+  {
+   "day": "2026-10-26",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-27",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-28",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-29",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-30",
+   "kind": "work",
+   "today": false,
+   "forecast": 229.9225,
+   "lo": 207.9,
+   "hi": 249.0
+  },
+  {
+   "day": "2026-10-31",
+   "kind": "off",
+   "today": false
+  }
+ ],
+ "fact": 1160,
+ "plan_to_date": 1200,
+ "corridor_hits": 9,
+ "shifts_total": 10,
+ "corridor_fact": {
+  "hits": 2,
+  "shifts": 2,
+  "source": "fact"
+ },
+ "forecast": {
+  "total_mean": 5069.2265,
+  "total_range": [
+   4880.0,
+   5235.0
+  ],
+  "p_plan": 0.0,
+  "remaining_days": 17,
+  "source": "forecast",
+  "model": "SimPy",
+  "twin_version": "43407be5ee",
+  "learned": false,
+  "typical_days": 400,
+  "maintenance_days": 120,
+  "param_uncertainty": {
+   "sets": 40,
+   "data_days": 2
+  }
+ },
+ "plans": {
+  "month": 5500,
+  "by_days": 5280,
+  "by_models": 4800,
+  "work_days": 22,
+  "need_per_day": 255.2941176470588,
+  "daily": 240
+ }
+}

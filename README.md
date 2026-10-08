@@ -5,6 +5,7 @@
 ![Allur Flow — 3D-двойник, план и схема](media/allur-flow-promo.gif)
 
 Ролик 24 с со звуком: [`media/allur-flow-promo.mp4`](media/allur-flow-promo.mp4). Архитектура — `ARCHITECTURE.md`, сценарий демо — `DEMO.md`.
+Для эксперта: [`REVIEW.md`](REVIEW.md) — карта по критериям, результаты JSON/CSV в [`results/`](results/).
 Ролик пересобирается из живого интерфейса: `node promo/record.cjs` (запись) → `python promo/build.py <запись> <результат>` (монтаж и звук).
 
 ## Запуск (Windows)

@@ -1,0 +1,86 @@
+{
+ "source": "sim",
+ "reps": 20,
+ "plan_per_shift": 120,
+ "normal": {
+  "good_per_shift": 119.2,
+  "lo": 112.65,
+  "hi": 125.05,
+  "oee_pct": 84.43333333333334,
+  "downtime_min": 47.961902001881626,
+  "oee_parts": {
+   "availability": 95.11197916666667,
+   "performance": 95.81851026357636,
+   "quality": 92.67277528674185
+  },
+  "paint_defect_pct": 3.971253800554659,
+  "defect_pct": {
+   "welding": 2.306888823330321,
+   "paint": 3.971253800554659,
+   "assembly": 1.21587570392215
+  },
+  "worst_station_down_day": 60.15500000000003,
+  "bottleneck_share": {
+   "paint": 0.2,
+   "assembly": 0.6,
+   "welding": 0.2
+  },
+  "down_by_station_day": {
+   "welding": 24.330000000000002,
+   "paint": 41.41000000000001,
+   "assembly": 32.635
+  },
+  "p_down_over_limit": 0.45
+ },
+ "forecast": {
+  "good_per_shift": 119.2,
+  "lo": 112.65,
+  "hi": 125.05,
+  "oee_pct": 84.43333333333334,
+  "downtime_min": 47.961902001881626,
+  "oee_parts": {
+   "availability": 95.11197916666667,
+   "performance": 95.81851026357636,
+   "quality": 92.67277528674185
+  },
+  "paint_defect_pct": 3.971253800554659,
+  "defect_pct": {
+   "welding": 2.306888823330321,
+   "paint": 3.971253800554659,
+   "assembly": 1.21587570392215
+  },
+  "worst_station_down_day": 60.15500000000003,
+  "bottleneck_share": {
+   "paint": 0.2,
+   "assembly": 0.6,
+   "welding": 0.2
+  },
+  "down_by_station_day": {
+   "welding": 24.330000000000002,
+   "paint": 41.41000000000001,
+   "assembly": 32.635
+  },
+  "p_down_over_limit": 0.45,
+  "delta": 0.0,
+  "delta_ci": [
+   0.0,
+   0.0
+  ]
+ },
+ "targets": {
+  "oee_min_pct": 85.0,
+  "defect_max_pct": 2.0,
+  "downtime_max_min_per_day": 60,
+  "monthly_output_min": 5500
+ },
+ "faults": [],
+ "actions": [],
+ "scenario": "cfg:|",
+ "twin": {
+  "paint_defect_p": 0.04329,
+  "learned": false,
+  "version": "43407be5ee",
+  "source": "assumption",
+  "observations": 0
+ }
+}

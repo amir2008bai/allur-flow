@@ -1,0 +1,291 @@
+{
+ "source": "fact",
+ "source_file": "test_data.docx",
+ "route": [
+  {
+   "id": "warehouse_in",
+   "name": "Склад комплектующих",
+   "order": 0
+  },
+  {
+   "id": "welding",
+   "name": "Сварка",
+   "order": 1
+  },
+  {
+   "id": "paint",
+   "name": "Окраска",
+   "order": 2
+  },
+  {
+   "id": "assembly",
+   "name": "Сборка",
+   "order": 3
+  },
+  {
+   "id": "qc",
+   "name": "Контроль качества",
+   "order": 4
+  },
+  {
+   "id": "warehouse_out",
+   "name": "Склад готовой продукции",
+   "order": 5
+  }
+ ],
+ "lines": [
+  {
+   "date": "2026-10-01",
+   "line": "Сварка-1",
+   "area": "welding",
+   "plan": 120,
+   "fact": 118,
+   "runtime_h": 7.8,
+   "utilization_pct": 98.0,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 1,
+    "row": 1
+   }
+  },
+  {
+   "date": "2026-10-01",
+   "line": "Окраска-1",
+   "area": "paint",
+   "plan": 120,
+   "fact": 115,
+   "runtime_h": 7.5,
+   "utilization_pct": 94.0,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 1,
+    "row": 2
+   }
+  },
+  {
+   "date": "2026-10-01",
+   "line": "Сборка-1",
+   "area": "assembly",
+   "plan": 120,
+   "fact": 121,
+   "runtime_h": 8.0,
+   "utilization_pct": 100.0,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 1,
+    "row": 3
+   }
+  },
+  {
+   "date": "2026-10-02",
+   "line": "Сварка-1",
+   "area": "welding",
+   "plan": 120,
+   "fact": 111,
+   "runtime_h": 7.2,
+   "utilization_pct": 91.0,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 1,
+    "row": 4
+   }
+  },
+  {
+   "date": "2026-10-02",
+   "line": "Окраска-1",
+   "area": "paint",
+   "plan": 120,
+   "fact": 116,
+   "runtime_h": 7.7,
+   "utilization_pct": 96.0,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 1,
+    "row": 5
+   }
+  },
+  {
+   "date": "2026-10-02",
+   "line": "Сборка-1",
+   "area": "assembly",
+   "plan": 120,
+   "fact": 119,
+   "runtime_h": 7.9,
+   "utilization_pct": 99.0,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 1,
+    "row": 6
+   }
+  }
+ ],
+ "downtime": [
+  {
+   "date": "2026-10-01",
+   "area": "welding",
+   "asset_id": "welding.abb01",
+   "equipment": "ABB-01",
+   "reason": "Ошибка датчика",
+   "minutes": 25,
+   "planned": false,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 2,
+    "row": 1
+   }
+  },
+  {
+   "date": "2026-10-01",
+   "area": "paint",
+   "asset_id": "paint.booth02",
+   "equipment": "Камера-02",
+   "reason": "Замена фильтра",
+   "minutes": 40,
+   "planned": false,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 2,
+    "row": 2
+   }
+  },
+  {
+   "date": "2026-10-02",
+   "area": "assembly",
+   "asset_id": "assembly.conveyor03",
+   "equipment": "Конвейер-03",
+   "reason": "Обрыв цепи",
+   "minutes": 55,
+   "planned": false,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 2,
+    "row": 3
+   }
+  },
+  {
+   "date": "2026-10-02",
+   "area": "welding",
+   "asset_id": "welding.abb04",
+   "equipment": "ABB-04",
+   "reason": "Плановое ТО",
+   "minutes": 30,
+   "planned": true,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 2,
+    "row": 4
+   }
+  }
+ ],
+ "model_plan": [
+  {
+   "model": "Chevrolet Onix",
+   "monthly_plan": 2500,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 3,
+    "row": 1
+   }
+  },
+  {
+   "model": "Chevrolet Cobalt",
+   "monthly_plan": 1800,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 3,
+    "row": 2
+   }
+  },
+  {
+   "model": "JAC J7",
+   "monthly_plan": 500,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 3,
+    "row": 3
+   }
+  }
+ ],
+ "quality": [
+  {
+   "date": "2026-10-01",
+   "area": "welding",
+   "produced": 118,
+   "defects": 2,
+   "defect_pct_reported": 1.7,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 4,
+    "row": 1
+   }
+  },
+  {
+   "date": "2026-10-01",
+   "area": "paint",
+   "produced": 115,
+   "defects": 4,
+   "defect_pct_reported": 3.5,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 4,
+    "row": 2
+   }
+  },
+  {
+   "date": "2026-10-01",
+   "area": "assembly",
+   "produced": 121,
+   "defects": 1,
+   "defect_pct_reported": 0.8,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 4,
+    "row": 3
+   }
+  },
+  {
+   "date": "2026-10-02",
+   "area": "welding",
+   "produced": 111,
+   "defects": 3,
+   "defect_pct_reported": 2.7,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 4,
+    "row": 4
+   }
+  },
+  {
+   "date": "2026-10-02",
+   "area": "paint",
+   "produced": 116,
+   "defects": 6,
+   "defect_pct_reported": 5.2,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 4,
+    "row": 5
+   }
+  },
+  {
+   "date": "2026-10-02",
+   "area": "assembly",
+   "produced": 119,
+   "defects": 2,
+   "defect_pct_reported": 1.7,
+   "provenance": {
+    "file": "test_data.docx",
+    "table": 4,
+    "row": 6
+   }
+  }
+ ],
+ "targets": {
+  "shifts_per_day": 2,
+  "shift_hours": 8.0,
+  "oee_min_pct": 85.0,
+  "defect_max_pct": 2.0,
+  "critical_downtime_max_min_per_day": 60,
+  "monthly_output_min": 5500
+ }
+}
