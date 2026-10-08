@@ -447,7 +447,7 @@ export default function Scene3D({ run, quality = 'high' }: { run: SimRun; qualit
         <planeGeometry args={[600, 400]} />
         <meshStandardMaterial color="#f5f6f8" roughness={1} toneMapped={false} />
       </mesh>
-      {LINKS.map((l) => <FlowLink key={l.from.id} link={l} status={linkStatus(l, frame?.states)} />)}
+      {LINKS.filter((l) => !l.buffer).map((l) => <FlowLink key={l.from.id} link={l} status={linkStatus(l, frame?.states)} />)}
 
       {ZONES.map((z) => <ZoneBlock key={z.id} zone={z} frame={frame} bottleneck={z.id === bnZone} />)}
       {BUFFERS.map((b) => <BufferSlots key={b.id} buf={b} level={frame?.buffers[b.id] ?? 0} cap={caps[b.id]} />)}
