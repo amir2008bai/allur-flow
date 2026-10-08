@@ -121,8 +121,119 @@ def focus_3d(zone: str) -> dict:
     return {"ok": True, "показан_участок": ZONES[zone], "action": {"type": "focus", "zone": zone}}
 
 
+# ── Новые возможности двойника: прогноз к концу смены, остановка «сейчас», журнал, месяц, нормы ТЗ ──
+STATION_BY_WORD = {"сварк": "welding", "окрас": "paint", "сборк": "assembly", "конвейер": "assembly"}
+
+
+def _now_t() -> int:
+    v = CURRENT_VIEW.get() or {}
+    return int(v.get("t") or 0)
+
+
+def _today_iso() -> str:
+    from datetime import date
+    return date.today().isoformat()
+
+
+def _view_date_iso() -> str:
+    v = CURRENT_VIEW.get() or {}
+    return v.get("date_iso") or _today_iso()
+
+
+def _clock(t: float) -> str:
+    m = int(t) + 8 * 60
+    return f"{(m // 60) % 24:02d}:{m % 60:02d}"
+
+
+def get_shift_forecast() -> dict:
+    """Сколько машин будет к концу текущей смены, если сейчас — время на шкале у пользователя."""
+    from ..sim.api import eta
+    t = _now_t()
+    e = eta(CURRENT_SCENARIO.get(), CURRENT_SEED.get(), t)
+    out = {"source": "прогноз двойника: факт до текущей минуты + 30 прогонов остатка смены",
+           "сейчас": _clock(e["t"]), "смена": e["shift"], "конец_смены": _clock(e["shift_end"]), "план_смены": e["plan"],
+           "сделано": int(e["done"]), "ещё_ожидается": round(e["remaining_mean"]),
+           "к_концу_смены": round(e["total_mean"]), "коридор_к_концу_смены": [round(e["total_range"][0]), round(e["total_range"][1])],
+           "вероятность_выполнить_план_pct": round(100 * e["p_plan"]),
+           "утренний_прогноз": round(e["start"]["total_mean"]), "утренняя_вероятность_плана_pct": round(100 * e["start"]["p_plan"])}
+    if e["ended"]:
+        out["смена_закончилась_факт"] = int(e["actual"])
+    if e["events"]:
+        out["остановки_сейчас"] = [f"{x['name']} {_clock(x['at'])} на {x['minutes']} мин" for x in e["events"]]
+    return out
+
+
+def simulate_stop(zone: str, minutes: int = 30) -> dict:
+    """Что будет к концу смены, если участок встанет прямо сейчас (в текущую минуту шкалы) на N минут."""
+    from ..sim.api import eta, parse_cfg, parse_events
+    if zone not in ("welding", "paint", "assembly"):
+        return {"error": "остановить можно сварку (welding), окраску (paint) или сборку (assembly)"}
+    minutes = int(max(5, min(240, minutes)))
+    sc, seed, t = CURRENT_SCENARIO.get(), CURRENT_SEED.get(), _now_t()
+    f, a = parse_cfg(sc) if sc.startswith("cfg:") else ([], [])
+    ev = [f"{st}@{at}+{d}" for st, at, d in parse_events(sc)] + [f"{zone}@{min(959, t)}+{minutes}"]
+    stop_sc = f"cfg:{','.join(f)}|{','.join(a)}|{';'.join(ev)}"
+    before, after = eta(sc, seed, t), eta(stop_sc, seed, t)
+    return {"source": "что-если двойника (30 прогонов остатка смены)", "участок": STATION_RU[zone], "остановка_с": _clock(t), "минут": minutes,
+            "к_концу_смены_без_остановки": round(before["total_mean"]), "к_концу_смены_с_остановкой": round(after["total_mean"]),
+            "потеря_машин": round(before["total_mean"] - after["total_mean"]),
+            "вероятность_плана_без_остановки_pct": round(100 * before["p_plan"]), "вероятность_плана_с_остановкой_pct": round(100 * after["p_plan"]),
+            "план_смены": after["plan"]}
+
+
+def get_month_forecast() -> dict:
+    """Выполним ли план месяца: факт с 1-го числа + прогноз будущих рабочих дней; несогласованность плана в ТЗ."""
+    from ..journal import month
+    today = _today_iso()
+    m = month(today[:7], today)
+    f, p = m["forecast"], m["plans"]
+    return {"source": "журнал (симуляция) + прогноз двойника по 240 типичным дням", "месяц": m["month"],
+            "сделано_с_начала_месяца": int(m["fact"]), "план_на_прошедшие_рабочие_дни": int(m["plan_to_date"]),
+            "прогноз_к_концу_месяца": round(f["total_mean"]), "коридор": [round(f["total_range"][0]), round(f["total_range"][1])],
+            "вероятность_выполнить_план_месяца_pct": round(100 * f["p_plan"]), "осталось_рабочих_дней": f["remaining_days"],
+            "нужно_в_день_для_плана": round(p["need_per_day"]) if p["need_per_day"] else None, "дневной_план": p["daily"],
+            "план_месяца_тз": p["month"], "план_по_дневному_плану": p["by_days"], "план_по_моделям": p["by_models"], "рабочих_дней": p["work_days"],
+            "примечание": "Планы в ТЗ не сходятся — это несогласованность плана, а не недовыпуск"}
+
+
+def get_day_report(date: str = "") -> dict:
+    """Запись журнала за день: план, факт по сменам, утренний прогноз против факта, что съело машины, нарушения норм ТЗ."""
+    from datetime import date as Date
+    from ..journal import day as journal_day
+    d = date or _view_date_iso()
+    try:
+        Date.fromisoformat(d)
+    except ValueError:
+        return {"error": "дата в формате ГГГГ-ММ-ДД"}
+    r = journal_day(d)
+    if r.get("kind") == "off":
+        return {"source": "журнал смен", "день": d, "выходной": True}
+    return {"source": "журнал смен (симуляция)", "день": d, "условия": r["conditions"], "план": r["plan"], "факт": r["fact"],
+            "выполнение_pct": round(r["pct"]), "смены": [{"смена": s["shift"], "факт": s["fact"], "прогноз_утром": round(s["forecast"]["mean"]),
+                                                        "коридор": [round(s["forecast"]["lo"]), round(s["forecast"]["hi"])], "в_коридоре": s["in_corridor"]} for s in r["shifts"]],
+            "что_съело_машины": [f"{l['name']} — {l['reason']}: {l['minutes']} мин" for l in r["losses"][:3]],
+            "нарушения_норм": [n["text"] for n in r.get("norms", [])], "брак_окраски_pct": r["paint_defect_pct"], "oee_pct": r["oee_pct"]}
+
+
+def get_norms() -> dict:
+    """Нормы ТЗ (факт) против текущей смены двойника: брак окраски, простой худшего участка, OEE."""
+    from ..sim.api import parse_cfg, parse_events, shift
+    sc = CURRENT_SCENARIO.get()
+    f, a = parse_cfg(sc) if sc.startswith("cfg:") else ([], [])
+    ev = ";".join(f"{st}@{at}+{d}" for st, at, d in parse_events(sc))
+    r = shift(",".join(f), ",".join(a), 20, ev)
+    side = r["forecast"] if (f or a or ev) else r["normal"]
+    tg = r["targets"]
+    return {"source": "нормы — факт ТЗ; значения — симуляция смены (20 прогонов)",
+            "брак_окраски_pct": round(side["paint_defect_pct"], 1), "норма_брака_pct": tg["defect_max_pct"],
+            "простой_худшего_участка_мин_в_сутки": round(side["worst_station_down_day"]), "лимит_простоя_мин_в_сутки": tg["downtime_max_min_per_day"],
+            "oee_pct": round(side["oee_pct"]), "цель_oee_pct": tg["oee_min_pct"]}
+
+
 REGISTRY = {"get_current_view": get_current_view, "get_line_status": get_line_status, "compare_actions": compare_actions, "get_paint_quality": get_paint_quality,
-            "get_data_findings": get_data_findings, "get_learning_status": get_learning_status, "focus_3d": focus_3d}
+            "get_data_findings": get_data_findings, "get_learning_status": get_learning_status, "focus_3d": focus_3d,
+            "get_shift_forecast": get_shift_forecast, "simulate_stop": simulate_stop, "get_month_forecast": get_month_forecast,
+            "get_day_report": get_day_report, "get_norms": get_norms}
 
 SCENARIO_ENUM = ["base", "paint_degradation", "conveyor_break"]
 SCHEMAS = [
@@ -130,7 +241,7 @@ SCHEMAS = [
      "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "get_line_status", "description": "Текущее состояние линии в симуляции: годные за смену, план, узкое место, брак окраски, OEE, простои.",
      "parameters": {"type": "object", "properties": {}}}},
-    {"type": "function", "function": {"name": "compare_actions", "description": "Сравнить действия (обслужить камеру окраски, второй пост ремонта, +6 мест в буфере): прирост машин за смену с интервалом.",
+    {"type": "function", "function": {"name": "compare_actions", "description": "Сравнить 6 действий (обслужить камеру окраски, наладчик у линии, разгрузить сборку, ускорить роботов сварки, больше накопитель, второй пост ремонта): прирост машин за смену с интервалом, лучшая пара, разрыв до плана, деньги.",
      "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "get_paint_quality", "description": "Брак окраски: оценка, интервал, вероятность выше нормы, переделки за смену, данные ТЗ, про фильтр.",
      "parameters": {"type": "object", "properties": {}}}},
@@ -140,4 +251,14 @@ SCHEMAS = [
      "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "focus_3d", "description": "Показать участок на 3D-схеме завода (камера подлетит к нему). Вызывай, когда говоришь о конкретном участке.",
      "parameters": {"type": "object", "properties": {"zone": {"type": "string", "enum": list(ZONES)}}, "required": ["zone"]}}},
+    {"type": "function", "function": {"name": "get_shift_forecast", "description": "Сколько машин будет к концу ТЕКУЩЕЙ смены (сделано + ожидается), вероятность выполнить план смены, как изменилось с утра. Вызывай на «успеем ли план», «сколько будет к концу смены».",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "simulate_stop", "description": "Что-если: участок встанет ПРЯМО СЕЙЧАС на N минут — сколько машин потеряем к концу смены и как изменится вероятность плана.",
+        "parameters": {"type": "object", "properties": {"zone": {"type": "string", "enum": ["welding", "paint", "assembly"]}, "minutes": {"type": "integer", "minimum": 5, "maximum": 240}}, "required": ["zone"]}}},
+    {"type": "function", "function": {"name": "get_month_forecast", "description": "Выполним ли план месяца: сделано с 1-го, прогноз к концу месяца, нужно в день, несогласованность плана в ТЗ (5500 / по дням / по моделям 4800).",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "get_day_report", "description": "Отчёт журнала за день: план, факт по сменам, утренний прогноз против факта, что съело машины, нарушения норм. Без даты — день на экране.",
+        "parameters": {"type": "object", "properties": {"date": {"type": "string", "description": "ГГГГ-ММ-ДД"}}}}},
+    {"type": "function", "function": {"name": "get_norms", "description": "Нормы ТЗ против текущей смены: брак окраски (норма 2%), простой худшего участка (лимит 60 мин/сутки), OEE (цель 85%).",
+        "parameters": {"type": "object", "properties": {}}}},
 ]

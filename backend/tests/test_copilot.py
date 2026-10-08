@@ -43,3 +43,14 @@ def test_verified_card_is_built_by_server_with_honest_status():
     v = verified_facts(log)
     assert "подтверждён" in v[0]["note"] and "через 0" in v[1]["note"]
     assert verified_facts([{"name": "compare_actions", "result": {"лучшая_пара": None, "действия": []}}])[0]["label"] == "Ничего не менять"
+
+
+def test_copilot_knows_new_twin_features_offline():
+    from app.copilot.agent import ask
+    view = {"t": 360, "date_iso": "2026-10-06"}
+    cases = {"Успеем выполнить план смены?": "get_shift_forecast", "Что если сейчас встанет сборка на час?": "simulate_stop",
+             "Выполним план месяца?": "get_month_forecast", "Соблюдаем нормы ТЗ?": "get_norms", "Что было в этот день?": "get_day_report"}
+    for q, tool in cases.items():
+        r = ask(q, offline=True, scenario="base", seed=7, view=view)
+        assert tool in [t["name"] for t in r["tools"]], q
+        assert r["unverified"] == [] and r["verified"], q

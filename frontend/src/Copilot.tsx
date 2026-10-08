@@ -11,7 +11,7 @@ import type { ZoneId } from './twin/layout'
 interface Reply { answer: string; model: string; mode: 'llm' | 'offline'; sources: string[]; unverified: string[]; verified?: { label: string; value: string; note: string }[]; actions: { type: string; zone: ZoneId }[]; fallback_reason?: string }
 interface Msg { role: 'user' | 'assistant'; text: string; meta?: Reply }
 
-const CHIPS = ['Что сейчас происходит?', 'Во что обходится брак окраски?', 'Что сделать, чтобы выполнить план?', 'Почему OEE не считается?']
+const CHIPS = ['Что сейчас происходит?', 'Успеем выполнить план смены?', 'Что если сейчас встанет сборка на час?', 'Выполним план месяца?', 'Что сделать, чтобы выполнить план?', 'Соблюдаем нормы ТЗ?']
 
 /** **жирный** → <b>, остальная разметка убирается. */
 function Rich({ text }: { text: string }) {
@@ -24,7 +24,7 @@ const TAB_RU: Record<string, string> = { facts: 'Факты из ТЗ', twin: '�
 function screenView() {
   const v = useView.getState()
   return {
-    tab: TAB_RU[v.tab] ?? v.tab, date: longDate(v.date), time: clock(v.t), t: Math.floor(v.t),
+    tab: TAB_RU[v.tab] ?? v.tab, date: longDate(v.date), date_iso: v.date, time: clock(v.t), t: Math.floor(v.t),
     scenario_name: v.scenario, selected_zone: v.selected ? ZONE_BY_ID[v.selected]?.name : undefined, selected_zone_id: v.selected ?? undefined,
     incident: v.incidentText ?? undefined, stress: v.stressInfo ?? undefined,
   }
@@ -47,7 +47,8 @@ export default function Copilot() {
     send(question, false)
   }, [question]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const send = async (text: string, offline: boolean) => {
+  /** quick = быстрый ответ по шаблону (кнопки-подсказки), без ИИ; без сервера не работает ни тот, ни другой. */
+  const send = async (text: string, quick: boolean) => {
     if (!text.trim() || busy) return
     if (offline) { setMsgs((m) => [...m, { role: 'user', text }, { role: 'assistant', text: `${NEED_SERVER}: помощник отвечает по расчётам двойника, а они идут на сервере.` }]); return }
     const history = msgs.slice(-6).map((m) => ({ role: m.role, content: m.text }))
@@ -55,7 +56,7 @@ export default function Copilot() {
     setInput('')
     setBusy(true)
     try {
-      const r: Reply = await fetch('/api/copilot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, history, offline, scenario, seed: seedFromDate(useView.getState().date), view: screenView() }) }).then((x) => x.json())
+      const r: Reply = await fetch('/api/copilot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, history, offline: quick, scenario, seed: seedFromDate(useView.getState().date), view: screenView() }) }).then((x) => x.json())
       setMsgs((m) => [...m, { role: 'assistant', text: r.answer, meta: r }])
       const focus = r.actions?.find((a) => a.type === 'focus')
       if (focus) {   // ответ двигает сцену: переходим в 3D и подлетаем к участку

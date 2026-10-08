@@ -15,14 +15,20 @@ export const useNet = create<NetState>((set) => ({
   setServer: (server) => set((s) => (s.server === server ? s : { server })),
 }))
 
-/** Пинг /api/health с коротким таймаутом. Сервис-воркер этот адрес не кеширует — ответ всегда честный. */
+/** Пинг /api/health. Сервис-воркер этот адрес не кеширует — ответ всегда честный.
+ *  Сервер может быть занят тяжёлым расчётом (прогноз месяца, 40 смен беспредела) и ответить с задержкой —
+ *  поэтому ждём до 8 с и объявляем офлайн только после двух неудач подряд (иначе ложный «офлайн-режим»). */
+let fails = 0
 export async function checkServer(): Promise<boolean> {
   const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(), 2500)
+  const t = setTimeout(() => ctrl.abort(), 8000)
   let ok = false
   try { ok = (await fetch('/api/health', { signal: ctrl.signal, cache: 'no-store' })).ok } catch { ok = false } finally { clearTimeout(t) }
-  useNet.getState().setServer(ok)
-  return ok
+  if (ok) { fails = 0; useNet.getState().setServer(true); return true }
+  fails += 1
+  if (fails >= 2 || !navigator.onLine) useNet.getState().setServer(false)
+  else setTimeout(checkServer, 3000)                     // одна неудача — быстро перепроверить, пока не пугать пользователя
+  return false
 }
 
 /** Ответ пришёл из кеша сервис-воркера, а не от живого сервера. */
