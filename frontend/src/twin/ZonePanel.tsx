@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { SimRun } from '../source'
 import { BUFFERS, STATE_HEX, STATE_RU, ZONES, ZONE_BY_ID, type StationState } from './layout'
 import { useView } from './store'
@@ -8,6 +9,26 @@ export default function ZonePanel({ run }: { run: SimRun }) {
   const selected = useView((s) => s.selected)
   const select = useView((s) => s.select)
   const t = useView((s) => s.t)
+  useEffect(() => {
+    const navigate = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+      const target = event.target
+      if (target instanceof Element && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="textbox"], [role="combobox"], [role="spinbutton"], [role="listbox"], [role="menu"]')) return
+      const state = useView.getState()
+      if (state.view !== '3d') return
+      const direction = event.key === 'ArrowRight' ? 1 : -1
+      const index = ZONES.findIndex((zone) => zone.id === state.selected)
+      const nextIndex = index < 0
+        ? (direction > 0 ? 0 : ZONES.length - 1)
+        : (index + direction + ZONES.length) % ZONES.length
+      event.preventDefault()
+      state.setTouring(false)
+      state.select(ZONES[nextIndex].id)
+    }
+    window.addEventListener('keydown', navigate)
+    return () => window.removeEventListener('keydown', navigate)
+  }, [])
   if (!selected) return null
   const z = ZONE_BY_ID[selected]
   const index = ZONES.findIndex((zone) => zone.id === selected)
@@ -32,15 +53,17 @@ export default function ZonePanel({ run }: { run: SimRun }) {
       </div>
 
       <div className="mt-3 flex gap-2" aria-label="Переключение участков">
-        <button onClick={() => goTo(previous.id)} aria-label={`Предыдущий участок: ${previous.name}`} title={previous.name}
+        <button onClick={() => goTo(previous.id)} aria-label={`Предыдущий участок: ${previous.name}`} title={previous.name} aria-keyshortcuts="ArrowLeft"
           className="flex min-h-11 min-w-0 flex-1 items-center gap-1 rounded-xl bg-slate-50 px-2 text-xs font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-sky-500">
           <ChevronLeft size={17} className="shrink-0" /><span className="truncate">{previous.short}</span>
         </button>
-        <button onClick={() => goTo(next.id)} aria-label={`Следующий участок: ${next.name}`} title={next.name}
+        <button onClick={() => goTo(next.id)} aria-label={`Следующий участок: ${next.name}`} title={next.name} aria-keyshortcuts="ArrowRight"
           className="flex min-h-11 min-w-0 flex-1 items-center justify-end gap-1 rounded-xl bg-slate-50 px-2 text-xs font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-sky-500">
           <span className="truncate">{next.short}</span><ChevronRight size={17} className="shrink-0" />
         </button>
       </div>
+
+      <div className="mt-2 text-[11px] text-slate-400">← → на клавиатуре — сменить участок</div>
 
       {st && (
         <div className="mt-4 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
