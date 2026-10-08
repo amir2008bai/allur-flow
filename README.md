@@ -2,6 +2,11 @@
 
 Прототип для кейса №2 Qostanai Industry Hackathon. Правила и стек — `AGENTS.md`, план — `PLAN.md`, журнал — `PROGRESS.md`.
 
+![Allur Flow — 3D-двойник, план и схема](media/allur-flow-promo.gif)
+
+Ролик 24 с со звуком: [`media/allur-flow-promo.mp4`](media/allur-flow-promo.mp4). Архитектура — `ARCHITECTURE.md`, сценарий демо — `DEMO.md`.
+Ролик пересобирается из живого интерфейса: `node promo/record.cjs` (запись) → `python promo/build.py <запись> <результат>` (монтаж и звук).
+
 ## Запуск (Windows)
 1. Сервер:
    ```
