@@ -135,7 +135,12 @@ def downtime_findings(f: Facts) -> list[Finding]:
                    f"({_pct(share, 0)}% суточного лимита {limit} мин)."
                    + (" Плановое ТО — не входит во внеплановые простои." if dt.planned else ""))
         if deficit is not None:
-            summary += f" Линия в тот день недоработала {deficit} мин от 8 ч — журналы не сходятся."
+            from .fact_days import TOLERANCE_MIN
+            if dt.minutes > deficit + TOLERANCE_MIN:
+                summary += (f" Но участок в записанной смене недоработал всего {deficit} мин от 8 ч — {dt.minutes} мин туда не помещаются: "
+                            f"простой, вероятно, был в другой смене дня (так он и поставлен в двойнике).")
+            else:
+                summary += f" Участок в записанной смене недоработал {deficit} мин от 8 ч — простой в это укладывается."
         out.append(Finding(
             id=f"downtime.{dt.asset_id}.{dt.date:%m%d}", area=dt.area, severity=sev,
             title=f"{dt.equipment}: {dt.reason}",

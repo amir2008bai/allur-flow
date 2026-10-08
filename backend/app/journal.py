@@ -152,7 +152,7 @@ def _build(d: Date) -> dict:
         if paint_q:
             defect = paint_q["pct"]
         losses = [{"station": x["station"], "name": x["name"], "reason": f"{x['equipment']}: {x['reason']}", "minutes": x["minutes"],
-                   "planned": x["planned"], "source": "fact"} for x in sorted(fs["downtime"], key=lambda x: (x["planned"], -x["minutes"]))]
+                   "planned": x["planned"], "shift": x["shift"], "why": x["why"], "source": "fact"} for x in sorted(fs["downtime"], key=lambda x: (x["planned"], -x["minutes"]))]
         by = {(x["station"], x["reason"]): x["minutes"] for x in fs["downtime"] if not x["planned"]}
         norms = list(fs["norms"])
     elif defect > tg["defect_max_pct"]:

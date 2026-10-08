@@ -220,3 +220,16 @@ def test_month_forecast_accounts_for_parameter_uncertainty():
     assert between > 0
     f = journal.month("2026-10", "2026-10-08")["forecast"]
     assert f["param_uncertainty"]["sets"] == journal.PARAM_SETS
+
+
+def test_factory_stop_placed_in_shift_where_it_fits():
+    # находка: 02.10 сборка работала 7,9 ч (недоработка 6 мин), а обрыв цепи — 55 мин → он был в другой смене;
+    # с этим двойник дня совпадает с фактом смены 08–16 (119), а не занижает его до ~102
+    from datetime import date
+    from app import fact_days, journal
+    ev = {e["equipment"]: e for e in fact_days.placed_events(date(2026, 10, 2))}
+    assert ev["Конвейер-03"]["shift"] == 2 and ev["Конвейер-03"]["start"] >= 480
+    assert ev["ABB-04"]["shift"] == 1 and ev["ABB-04"]["start"] < 480
+    r = journal.record(date(2026, 10, 2))
+    s1 = r["shifts"][0]
+    assert abs(s1["twin"] - s1["fact"]) <= 8 and s1["in_corridor"]

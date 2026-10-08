@@ -222,8 +222,8 @@ def get_day_report(date: str = "") -> dict:
             "нарушения_норм": [n["text"] for n in r.get("norms", [])], "брак_окраски_pct": r["paint_defect_pct"], "oee_pct": r["oee_pct"]}
     if fs:
         out["данные_завода"] = {"брак_по_участкам_pct": {q["name"]: q["pct"] for q in fs["quality"]},
-                                "простои": [f"{x['equipment']}: {x['reason']} {x['minutes']} мин" + (" (плановое)" if x["planned"] else "") for x in fs["downtime"]],
-                                "примечание": fs["time_note"] + "; строка таблицы = смена 1 (допущение A1), смена 2 — двойник"}
+                                "простои": [f"{x['equipment']}: {x['reason']} {x['minutes']} мин" + (" (плановое)" if x["planned"] else "") + f" — смена {'08–16' if x.get('shift', 1) == 1 else '16–24'}" for x in fs["downtime"]],
+                                "примечание": fs["time_note"] + "; строка таблицы = смена 08–16 (допущение A1), смена 16–24 — двойник"}
     return out
 
 

@@ -17,7 +17,7 @@ interface FactsRec { lines: { line: string; plan: number; fact: number }[]; qual
 interface DayRec {
   day: string; kind: Kind; scenario?: string; conditions?: string; plan?: number; fact?: number; pct?: number; shifts?: ShiftRec[]
   facts?: FactsRec | null
-  losses?: { station: string; name: string; reason: string; minutes: number; planned?: boolean }[]; downtime_min?: number; paint_defect_pct?: number; oee_pct?: number; oee_parts?: { availability: number; performance: number; quality: number }
+  losses?: { station: string; name: string; reason: string; minutes: number; planned?: boolean; shift?: number; why?: string }[]; downtime_min?: number; paint_defect_pct?: number; oee_pct?: number; oee_parts?: { availability: number; performance: number; quality: number }
   norms?: { kind: string; text: string }[]; saved_at?: number; in_progress?: boolean; future?: boolean
 }
 
@@ -226,8 +226,8 @@ export default function MonthJournal() {
               {(rec.losses?.length ?? 0) === 0 ? <div className="mt-1 text-sm text-slate-400">внеплановых остановок не было</div> : (
                 <ul className="mt-1.5 space-y-1">
                   {rec.losses!.slice(0, 3).map((l) => (
-                    <li key={l.station + l.reason} className="flex items-baseline justify-between gap-2 text-sm">
-                      <span className="truncate"><b className="font-medium">{l.name}</b> <span className="text-slate-500">— {l.reason}{l.planned ? ' · плановое' : ''}</span></span>
+                    <li key={l.station + l.reason} className="flex items-baseline justify-between gap-2 text-sm" title={l.why}>
+                      <span className="truncate"><b className="font-medium">{l.name}</b> <span className="text-slate-500">— {l.reason}{l.planned ? ' · плановое' : ''}{l.shift ? ` · смена ${l.shift === 1 ? '08–16' : '16–24'}` : ''}</span></span>
                       <span className="shrink-0 tabular-nums text-slate-600">{int(l.minutes)} мин</span>
                     </li>
                   ))}
