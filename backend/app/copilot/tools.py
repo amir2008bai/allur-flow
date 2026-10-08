@@ -205,9 +205,12 @@ def get_day_report(date: str = "") -> dict:
         Date.fromisoformat(d)
     except ValueError:
         return {"error": "дата в формате ГГГГ-ММ-ДД"}
-    r = journal_day(d)
+    r = journal_day(d, _today_iso())
     if r.get("kind") == "off":
         return {"source": "журнал смен", "день": d, "выходной": True}
+    if r.get("in_progress") or r.get("future"):
+        return {"source": "журнал смен", "день": d, "день_не_закончился": True,
+                "примечание": "Итог дня записывается после его окончания; для сегодняшней смены — get_shift_forecast"}
     return {"source": "журнал смен (симуляция)", "день": d, "условия": r["conditions"], "план": r["plan"], "факт": r["fact"],
             "выполнение_pct": round(r["pct"]), "смены": [{"смена": s["shift"], "факт": s["fact"], "прогноз_утром": round(s["forecast"]["mean"]),
                                                         "коридор": [round(s["forecast"]["lo"]), round(s["forecast"]["hi"])], "в_коридоре": s["in_corridor"]} for s in r["shifts"]],

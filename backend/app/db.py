@@ -10,7 +10,8 @@ import sqlite3
 import time
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parents[2] / "data" / "allur_flow.sqlite"
+# ALLUR_DB — другой файл базы (тесты пишут во временную, а не в рабочий журнал)
+DB_PATH = Path(__import__("os").environ.get("ALLUR_DB") or Path(__file__).resolve().parents[2] / "data" / "allur_flow.sqlite")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -47,7 +48,8 @@ CREATE TABLE IF NOT EXISTS model_versions (
 """
 
 
-def connect(path: Path = DB_PATH) -> sqlite3.Connection:
+def connect(path: Path | None = None) -> sqlite3.Connection:
+    path = path or DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(path, check_same_thread=False)
     con.execute("PRAGMA journal_mode=WAL")

@@ -15,7 +15,7 @@ interface ShiftRec { shift: number; plan: number; fact: number; forecast: { mean
 interface DayRec {
   day: string; kind: Kind; scenario?: string; conditions?: string; plan?: number; fact?: number; pct?: number; shifts?: ShiftRec[]
   losses?: { station: string; name: string; reason: string; minutes: number }[]; downtime_min?: number; paint_defect_pct?: number; oee_pct?: number
-  norms?: { kind: string; text: string }[]; saved_at?: number
+  norms?: { kind: string; text: string }[]; saved_at?: number; in_progress?: boolean; future?: boolean
 }
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
@@ -49,9 +49,9 @@ export default function MonthJournal() {
   useEffect(() => {
     let alive = true
     setRec(null)
-    fetch(`/api/journal/day?date=${date}`).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive) setRec(d) }).catch(() => {})
+    fetch(`/api/journal/day?date=${date}&today=${today}`).then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive) setRec(d) }).catch(() => {})
     return () => { alive = false }
-  }, [date])
+  }, [date, today])
 
   const replay = () => {
     if (!rec?.scenario) return
@@ -100,17 +100,26 @@ export default function MonthJournal() {
               const d = byDay[n]
               const iso = `${month}-${String(n).padStart(2, '0')}`
               const isFuture = iso > today
+              const isToday = iso === today
               const sel = iso === (isFuture ? future : date)
               if (!d) return <div key={iso} className="grid aspect-square place-items-center rounded-lg text-xs text-slate-300">{n}</div>
               const base = 'flex aspect-square flex-col items-center justify-center rounded-lg text-xs ring-1 transition active:scale-95'
               const ring = sel ? ' ring-2 ring-sky-400' : ''
+              const flat = base.replace('ring-1 ', '')   // у прогнозных дней — только пунктир, без кольца
               if (d.kind === 'off') return (
                 <button key={iso} onClick={() => (isFuture ? setFuture(iso) : undefined)} disabled={!isFuture} title="выходной"
                   className={`${base} bg-slate-50 text-slate-400 ring-slate-100${ring}`}><span className="leading-none">{n}</span><span className="mt-0.5 text-[9px] leading-none">вых</span></button>
               )
+              if (isToday) return (
+                <button key={iso} onClick={() => { setFuture(null); setDate(iso) }} title={`сегодня · смена идёт · прогноз ≈ ${int(d.forecast ?? 0)}`}
+                  className={`${flat} border border-dashed border-sky-300 bg-sky-50/60 text-sky-800${iso === date && !future ? ' ring-2 ring-sky-400' : ''}`}>
+                  <span className="font-semibold leading-none">{n}</span>
+                  <span className="mt-0.5 text-[9px] leading-none">идёт</span>
+                </button>
+              )
               if (isFuture) return (
                 <button key={iso} onClick={() => setFuture(iso)} title={`прогноз ≈ ${int(d.forecast ?? 0)} (${int(d.lo ?? 0)}–${int(d.hi ?? 0)})`}
-                  className={`${base} border border-dashed border-slate-200 bg-white text-slate-500 ring-transparent${ring}`}>
+                  className={`${flat} border border-dashed border-slate-200 bg-white text-slate-500${ring}`}>
                   <span className="leading-none">{n}</span>
                   <span className="mt-0.5 flex items-center gap-0.5 text-[10px] tabular-nums leading-none text-slate-400">{d.kind === 'maint' && <Wrench size={9} />}≈{int(d.forecast ?? 0)}</span>
                 </button>
@@ -170,7 +179,13 @@ export default function MonthJournal() {
                 <button onClick={() => markDay(future, 'auto')} className="rounded-lg px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-100">по умолчанию</button>
               </div>
             </div>
-          ) : !rec ? <div className="text-sm text-slate-400">Загружаю запись дня…</div> : rec.kind === 'off' ? (
+          ) : !rec ? <div className="text-sm text-slate-400">Загружаю запись дня…</div> : rec.in_progress ? (
+            <div className="rounded-2xl p-4 ring-1 ring-sky-200">
+              <div className="font-semibold first-letter:uppercase">{longDate(rec.day)} · сегодня</div>
+              <div className="mt-1 text-sm text-slate-600">Смена идёт — итог дня запишется в журнал после его окончания. Прогноз к концу смены — под шкалой времени у сцены.</div>
+              <button onClick={replay} className="mt-3 flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700 active:scale-[.98]"><Play size={14} />Смотреть смену</button>
+            </div>
+          ) : rec.kind === 'off' ? (
             <div className="rounded-2xl p-4 text-sm text-slate-500 ring-1 ring-slate-200"><div className="font-semibold text-slate-900 first-letter:uppercase">{longDate(rec.day)}</div>Выходной — смен не было.</div>
           ) : (
             <div>

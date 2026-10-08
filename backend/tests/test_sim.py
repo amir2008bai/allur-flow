@@ -138,8 +138,11 @@ def test_journal_day_record_saved_once_and_honest():
     assert weld and weld[0]["minutes"] <= 96                       # авария 95 мин не задваивается
     assert any("лимит 60" in n["text"] for n in r1["norms"])      # нормы ТЗ проверяются
     m = journal.month("2026-10", "2026-10-08")
-    worked = [d for d in m["days"] if d["day"] <= "2026-10-08" and d["kind"] != "off"]
-    assert len(worked) == 6 and m["plan_to_date"] == 6 * 240         # сб/вс — выходные
+    worked = [d for d in m["days"] if d["day"] < "2026-10-08" and d["kind"] != "off"]
+    assert len(worked) == 5 and m["plan_to_date"] == 5 * 240         # сб/вс — выходные; сегодня ещё идёт — не в факте
+    today = next(d for d in m["days"] if d["day"] == "2026-10-08")
+    assert today.get("today") and "fact" not in today and today["forecast"] > 0
+    assert journal.day("2026-10-08", "2026-10-08")["in_progress"]       # сегодняшний день не записывается
     assert m["plans"]["by_days"] == 240 * m["plans"]["work_days"] and m["plans"]["by_models"] == 4800
     f = m["forecast"]
     assert f["total_range"][0] <= f["total_mean"] <= f["total_range"][1] and f["total_mean"] > m["fact"]

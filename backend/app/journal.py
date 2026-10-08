@@ -193,13 +193,13 @@ def month(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"), today: str = Query(
     days, future = [], []
     for d in _month_days(y, m):
         kind = day_kind(d)
-        if d <= td:
+        if d < td:          # сегодня ещё идёт — не запись, а прогноз (итог запишется после конца дня)
             if kind == "off":
                 days.append({"day": d.isoformat(), "kind": "off"})
                 continue
             r = record(d)
             days.append({"day": r["day"], "kind": kind, "fact": r["fact"], "plan": r["plan"], "pct": r["pct"], "scenario": r.get("scenario", "base"),
-                         "hits": sum(s["in_corridor"] for s in r["shifts"]), "norms": len(r.get("norms", [])), "today": d == td})
+                         "hits": sum(s["in_corridor"] for s in r["shifts"]), "norms": len(r.get("norms", []))})
         else:
             future.append((d, kind))
     past = [x for x in days if x["kind"] != "off"]
@@ -211,11 +211,11 @@ def month(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"), today: str = Query(
     fdays = []
     for d, kind in future:
         if kind == "off":
-            fdays.append({"day": d.isoformat(), "kind": "off"})
+            fdays.append({"day": d.isoformat(), "kind": "off", "today": d == td})
             continue
         dist = maint if kind == "maint" else typical
         sims += rng.choice(dist, size=sims.size)
-        fdays.append({"day": d.isoformat(), "kind": kind, "forecast": float(dist.mean()), "lo": float(np.percentile(dist, 10)), "hi": float(np.percentile(dist, 90))})
+        fdays.append({"day": d.isoformat(), "kind": kind, "today": d == td, "forecast": float(dist.mean()), "lo": float(np.percentile(dist, 10)), "hi": float(np.percentile(dist, 90))})
     tg = targets()
     work_days = len(past) + sum(1 for x in fdays if x["kind"] != "off")
     remaining_days = sum(1 for x in fdays if x["kind"] != "off")
@@ -230,13 +230,17 @@ def month(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"), today: str = Query(
 
 
 @router.get("/day")
-def day(date: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$")) -> dict:
+def day(date: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"), today: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$")) -> dict:
+    """Запись прошедшего дня. Сегодня и будущее не записываются: день ещё не закончился."""
     try:
         d = Date.fromisoformat(date)
+        td = Date.fromisoformat(today) if today else Date.today()
     except ValueError as e:
         raise HTTPException(422, str(e))
     if day_kind(d) == "off":
         return {"day": d.isoformat(), "kind": "off"}
+    if d >= td:
+        return {"day": d.isoformat(), "kind": day_kind(d), "in_progress": d == td, "future": d > td, "scenario": day_scenario(d)}
     return {**record(d), "kind": day_kind(d)}
 
 

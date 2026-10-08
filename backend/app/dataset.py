@@ -18,8 +18,10 @@ from .schemas import Facts
 
 ROOT = Path(__file__).resolve().parents[2] / "data"
 TEST_FILE = ROOT / "raw" / "test_data.docx"
-UPLOADS = ROOT / "uploads"
-STATE = ROOT / "active_dataset.json"
+# ALLUR_STATE_DIR — куда класть загрузки и выбор активного набора (тесты — во временную папку)
+_STATE_DIR = Path(__import__("os").environ.get("ALLUR_STATE_DIR") or ROOT)
+UPLOADS = _STATE_DIR / "uploads"
+STATE = _STATE_DIR / "active_dataset.json"
 
 _cache: dict = {}
 
