@@ -7,6 +7,7 @@ import CauseBanner from './twin/CauseBanner'
 import Futures from './twin/Futures'
 import Actions from './twin/Actions'
 import ShiftBuilder, { parseCfg, toCfg } from './twin/ShiftBuilder'
+import EtaPanel from './twin/EtaPanel'
 import { ZONES } from './twin/layout'
 import Timeline from './twin/Timeline'
 import ZonePanel from './twin/ZonePanel'
@@ -88,7 +89,7 @@ export default function TwinPage() {
     setFutures(null); useView.getState().setPlaying(false)
     load<SimRun>(`/api/sim/run?scenario=${encodeURIComponent(scenario)}&seed=${seed}`, `/bundles/run_${scenario}.json`).then((r) => { setRun(r.data); setMode(r.mode) })
       }, [scenario, seed])
-  const faultsOnly = toCfg(parseCfg(scenario).faults, [])
+  const faultsOnly = toCfg(parseCfg(scenario).faults, [], parseCfg(scenario).events)
   useEffect(() => {
     setWhatif(null)
     load<WhatIf>(`/api/sim/whatif?scenario=${encodeURIComponent(faultsOnly)}&reps=20`, `/bundles/whatif_${faultsOnly}.json`, 15000).then((r) => setWhatif(r.data))
@@ -131,6 +132,7 @@ export default function TwinPage() {
               <ZonePanel run={run} />
             </div>
             <div className="border-t border-slate-100 px-5 py-4"><Timeline run={run} /></div>
+            <EtaPanel seed={seed} />
           </Card>}
         </>
       )}

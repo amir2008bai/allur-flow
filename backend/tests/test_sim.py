@@ -108,3 +108,18 @@ def test_service_now_earlier_is_better():
     assert early["intervene"]["kpi"]["good_per_shift"] > late["intervene"]["kpi"]["good_per_shift"] >= base
     # до момента вмешательства будущие совпадают (одинаковые случайности)
     assert early["intervene"]["frames"][150]["good"] == early["do_nothing"]["frames"][150]["good"]
+
+
+def test_eta_updates_during_shift_and_stop_now():
+    # прогноз «к концу смены»: утром широкий, к 14:00 уже, остановка «сейчас» роняет его, утренний прогноз её не знает
+    from app.sim.api import eta, parse_cfg, scenario_name
+    morning = eta("base", 7, 0)
+    noon = eta("base", 7, 360)
+    stop = eta("cfg:||assembly@360+60", 7, 360)
+    w = lambda r: r["total_range"][1] - r["total_range"][0]  # noqa: E731
+    assert morning["done"] == 0 and noon["done"] > 0 and w(noon) < w(morning)
+    assert stop["total_mean"] < noon["total_mean"] - 5 and stop["p_plan"] < noon["p_plan"]
+    assert stop["start"] == noon["start"]          # утром о поломке не знали
+    assert stop["done"] == noon["done"]            # до момента остановки смена та же
+    assert parse_cfg("cfg:|fast_repair|assembly@360+60") == ([], ["fast_repair"])
+    assert "Сборка встала в 14:00 на 60 мин" in scenario_name("cfg:||assembly@360+60")

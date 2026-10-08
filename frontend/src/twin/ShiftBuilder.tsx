@@ -11,15 +11,20 @@ interface Shift { plan_per_shift: number; normal: Side; forecast: Side; actions:
   twin?: { learned: boolean; paint_defect_p: number; observations: number; version: string } }
 
 /** Сценарий двойника: cfg:<сбои>|<действия>. Старые имена переводим в новый вид. */
-export function parseCfg(s: string): { faults: string[]; actions: string[] } {
-  if (s.startsWith('cfg:')) { const [f, a] = s.slice(4).split('|'); return { faults: f ? f.split(',') : [], actions: a ? a.split(',') : [] } }
-  if (s.startsWith('chaos:')) return { faults: s.slice(6).split(','), actions: [] }
-  if (s.startsWith('stress:')) return { faults: [s.slice(7)], actions: [] }
-  if (s === 'paint_degradation') return { faults: ['filter_clog'], actions: [] }
-  if (s === 'conveyor_break') return { faults: ['conveyor_break'], actions: [] }
-  return { faults: [], actions: [] }
+/** Сценарий: cfg:<сбои>|<действия>|<остановки «сейчас»: участок@минута+длительность;...>. */
+export function parseCfg(s: string): { faults: string[]; actions: string[]; events: string[] } {
+  if (s.startsWith('cfg:')) {
+    const [f, a, e] = s.slice(4).split('|')
+    return { faults: f ? f.split(',') : [], actions: a ? a.split(',') : [], events: e ? e.split(';').filter(Boolean) : [] }
+  }
+  if (s.startsWith('chaos:')) return { faults: s.slice(6).split(','), actions: [], events: [] }
+  if (s.startsWith('stress:')) return { faults: [s.slice(7)], actions: [], events: [] }
+  if (s === 'paint_degradation') return { faults: ['filter_clog'], actions: [], events: [] }
+  if (s === 'conveyor_break') return { faults: ['conveyor_break'], actions: [], events: [] }
+  return { faults: [], actions: [], events: [] }
 }
-export const toCfg = (faults: string[], actions: string[]) => (faults.length || actions.length ? `cfg:${faults.join(',')}|${actions.join(',')}` : 'base')
+export const toCfg = (faults: string[], actions: string[], events: string[] = []) =>
+  (faults.length || actions.length || events.length ? `cfg:${faults.join(',')}|${actions.join(',')}${events.length ? `|${events.join(';')}` : ''}` : 'base')
 
 const int = (x: number) => Math.round(x).toLocaleString('ru-RU')
 const sign = (x: number) => (x > 0 ? '+' : x < 0 ? '−' : '')
@@ -40,7 +45,7 @@ export default function ShiftBuilder() {
   const scenario = useView((v) => v.scenario)
   const setScenario = useView((v) => v.setScenario)
   const money = useMoney()
-  const { faults, actions } = parseCfg(scenario)
+  const { faults, actions, events } = parseCfg(scenario)
   const [opts, setOpts] = useState<{ faults: Opt[]; actions: Opt[] } | null>(null)
   const [data, setData] = useState<Shift | null>(null)
   const [busy, setBusy] = useState(false)
@@ -48,10 +53,10 @@ export default function ShiftBuilder() {
 
   useEffect(() => { fetch('/api/sim/options').then((r) => r.json()).then(setOpts).catch(() => setOpts({ faults: [], actions: [] })) }, [])
   useEffect(() => {
-    if (!scenario.startsWith('cfg:') && scenario !== 'base') { setScenario(toCfg(faults, actions)); return }   // старое имя → новый вид
+    if (!scenario.startsWith('cfg:') && scenario !== 'base') { setScenario(toCfg(faults, actions, events)); return }   // старое имя → новый вид
     let alive = true
     setBusy(true)
-    fetch(`/api/sim/shift?faults=${faults.join(',')}&actions=${actions.join(',')}`).then((r) => r.json())
+    fetch(`/api/sim/shift?faults=${faults.join(',')}&actions=${actions.join(',')}&events=${encodeURIComponent(events.join(';'))}`).then((r) => r.json())
       .then((d) => { if (alive) setData(d) }).catch(() => {}).finally(() => alive && setBusy(false))
     if (faults.length && actions.length) {
       fetch(`/api/sim/shift?faults=${faults.join(',')}`).then((r) => r.json()).then((d) => { if (alive) setFaultOnly(d.forecast.good_per_shift) }).catch(() => {})
@@ -136,14 +141,14 @@ export default function ShiftBuilder() {
         <div className="flex flex-wrap items-center gap-2">
           <span className="flex w-24 items-center gap-1.5 text-sm font-medium text-slate-600"><TriangleAlert size={15} className="text-red-500" />Сбои</span>
           {opts?.faults.map((f) => (
-            <Chip key={f.id} on={faults.includes(f.id)} tone="bad" title={f.detail} onClick={() => setScenario(toCfg(toggle(faults, f.id), actions))}>{f.short}</Chip>
+            <Chip key={f.id} on={faults.includes(f.id)} tone="bad" title={f.detail} onClick={() => setScenario(toCfg(toggle(faults, f.id), actions, events))}>{f.short}</Chip>
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="flex w-24 items-center gap-1.5 text-sm font-medium text-slate-600"><Wrench size={15} className="text-emerald-600" />Действия</span>
           {opts?.actions.map((a) => (
             <Chip key={a.id} on={actions.includes(a.id)} tone="good" title={`${a.do ?? a.detail}${a.money ? ` · ${a.money.month ? `${tenge(a.money.month)}/мес` : ''}${a.money.month && a.money.once ? ', ' : ''}${a.money.once ? `${tenge(a.money.once)} разово` : ''}` : ''}`}
-              onClick={() => setScenario(toCfg(faults, toggle(actions, a.id)))}>{a.short}</Chip>
+              onClick={() => setScenario(toCfg(faults, toggle(actions, a.id), events))}>{a.short}</Chip>
           ))}
           {touched && <button onClick={() => setScenario('base')} className="ml-1 flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800"><RotateCcw size={12} />Обычная смена</button>}
         </div>

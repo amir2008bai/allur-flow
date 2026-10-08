@@ -55,17 +55,41 @@ def twin_overlay(p, ctx: dict | None = None):
 def parse_cfg(name: str) -> tuple[list[str], list[str]]:
     """cfg:<сбои через запятую>|<действия через запятую> → (сбои, действия)."""
     from ..stress import BY_ID
-    f, _, a = name[4:].partition("|")
+    parts = name[4:].split("|")
+    f, a = parts[0], (parts[1] if len(parts) > 1 else "")
     return [i for i in f.split(",") if i in BY_ID], [i for i in a.split(",") if i in INTERVENTIONS]
+
+
+EVENT_STATIONS = ("welding", "paint", "assembly")
+
+
+def parse_events(name: str) -> list[tuple[str, int, int]]:
+    """Остановки «прямо сейчас»: участок@минута+длительность через «;» (третья часть cfg)."""
+    if not name.startswith("cfg:"):
+        return []
+    parts = name[4:].split("|")
+    out = []
+    for e in (parts[2] if len(parts) > 2 else "").split(";"):
+        try:
+            st, rest = e.split("@"); at, dur = rest.split("+")
+            if st in EVENT_STATIONS and 0 <= int(at) < 960 and 1 <= int(dur) <= 240:
+                out.append((st, int(at), int(dur)))
+        except ValueError:
+            continue
+    return out[:6]
 
 
 def _scenario(name: str):
     if name.startswith("cfg:"):
         from ..stress import combine
+        from .params import ForcedDown
         faults, actions = parse_cfg(name)
         p = combine(faults) if faults else SCENARIOS["base"]
         for a in actions:
             p = INTERVENTIONS[a]["apply"](p)
+        ev = parse_events(name)
+        if ev:
+            p = p.with_(forced_downs=p.forced_downs + tuple(ForcedDown(st, float(at), float(d), reason="остановка «сейчас» (что-если)") for st, at, d in ev))
         return p
     if name.startswith("chaos:"):
         from ..stress import BY_ID, combine
@@ -84,11 +108,17 @@ def _scenario(name: str):
     return SCENARIOS[name]
 
 
+def _clock(t: float) -> str:
+    m = int(t) + 8 * 60
+    return f"{(m // 60) % 24:02d}:{m % 60:02d}"
+
+
 def scenario_name(name: str) -> str:
     if name.startswith("cfg:"):
         from ..stress import BY_ID
         faults, actions = parse_cfg(name)
         parts = [BY_ID[i]["short"] for i in faults] + [INTERVENTIONS[a]["short"] for a in actions]
+        parts += [f"{STATION_RU[st]} встала в {_clock(at)} на {d} мин" for st, at, d in parse_events(name)]
         return ", ".join(parts) if parts else "Обычная смена"
     if name.startswith("chaos:"):
         from ..stress import BY_ID
@@ -235,7 +265,7 @@ PLAN_PER_SHIFT = 120  # факт ТЗ: план 120 машин на линию �
 
 
 @lru_cache(maxsize=128)
-def _shift(faults: tuple[str, ...], actions: tuple[str, ...], reps: int, ver: str = "") -> dict:
+def _shift(faults: tuple[str, ...], actions: tuple[str, ...], reps: int, ver: str = "", events: str = "") -> dict:
     import numpy as np
     from ..stress import combine
     from .whatif import paired_ci
@@ -245,6 +275,10 @@ def _shift(faults: tuple[str, ...], actions: tuple[str, ...], reps: int, ver: st
     p = twin_overlay(combine(list(faults)) if faults else SCENARIOS["base"], ctx)
     for a in actions:
         p = INTERVENTIONS[a]["apply"](p)
+    ev = parse_events(f"cfg:||{events}") if events else []
+    if ev:
+        from .params import ForcedDown
+        p = p.with_(forced_downs=p.forced_downs + tuple(ForcedDown(st, float(at), float(d), reason="остановка «сейчас» (что-если)") for st, at, d in ev))
     shifts = base_p.horizon / base_p.shift_minutes
 
     def stats(params):
@@ -257,7 +291,7 @@ def _shift(faults: tuple[str, ...], actions: tuple[str, ...], reps: int, ver: st
                       "paint_defect_pct": float(np.mean([k["defect_pct"]["paint"] for k in ks]))}
 
     g0, normal = stats(base_p)
-    if faults or actions:
+    if faults or actions or ev:
         g1, forecast = stats(p)
         m, lo, hi = paired_ci(g1 - g0)
         forecast.update({"delta": m, "delta_ci": [lo, hi]})
@@ -273,12 +307,13 @@ def _shift(faults: tuple[str, ...], actions: tuple[str, ...], reps: int, ver: st
 
 
 @router.get("/shift")
-def shift(faults: str = "", actions: str = "", reps: int = Query(20, ge=2, le=30)) -> dict:
+def shift(faults: str = "", actions: str = "", reps: int = Query(20, ge=2, le=30), events: str = "") -> dict:
     """Одна смена: обычная (без сбоев и действий) против прогноза с выбранными сбоями и действиями. Одинаковые случайные числа."""
     from ..stress import BY_ID
     f = tuple(sorted(i for i in faults.split(",") if i in BY_ID))
     a = tuple(i for i in INTERVENTIONS if i in actions.split(","))
-    return _shift(f, a, reps, twin_context()["version"])
+    ev = ";".join(f"{st}@{at}+{d}" for st, at, d in parse_events(f"cfg:||{events}"))
+    return _shift(f, a, reps, twin_context()["version"], ev)
 
 
 @router.get("/options")
@@ -287,3 +322,61 @@ def options() -> dict:
     from ..stress import SCENARIOS as STRESS
     return {"faults": [{"id": s["id"], "short": s["short"], "name": s["name"], "detail": s["detail"]} for s in STRESS],
             "actions": [{"id": k, "short": v["short"], "name": v["name"], "detail": v["detail"], "do": v["do"], "money": v["money"]} for k, v in INTERVENTIONS.items()]}
+
+
+
+# ── Прогноз «к концу смены», который пересчитывается по ходу смены ─────────────────────────────
+ETA_REPS = 30
+SHIFT = 480
+
+
+@lru_cache(maxsize=32)
+def _eta_runs(scenario: str, ver: str):
+    """30 прогонов той же смены (те же сбои, действия и остановки): выпуск по минутам."""
+    import numpy as np
+    p = twin_overlay(_scenario(scenario))
+    curves = []
+    for i in range(ETA_REPS):
+        r = simulate(p, 3000 + i)
+        curves.append([f["good"] for f in r.frames] + [r.good_out])
+    n = min(len(c) for c in curves)
+    return np.array([c[:n] for c in curves], dtype=float)
+
+
+@router.get("/eta")
+def eta(scenario: str = "base", seed: int = 7, t: float = Query(0, ge=0, le=960)) -> dict:
+    """Сколько годных будет к концу ТЕКУЩЕЙ смены, если сейчас минута t.
+    Сделано — факт этого прогона до минуты t; остаток — разброс 30 прогонов той же смены от t до конца смены.
+    Плюс прогноз, каким он был в начале смены — чтобы видеть, как изменилась картина."""
+    import numpy as np
+    run = run_payload(scenario, seed)
+    frames = run["frames"]
+    good = [f["good"] for f in frames]
+    k = min(int(t), len(good) - 1)
+    s0 = SHIFT if k >= SHIFT else 0
+    s1 = min(s0 + SHIFT, len(good) - 1)
+    curves = _eta_runs(scenario, twin_context()["version"])
+    s1c = min(s1, curves.shape[1] - 1)
+    done = good[k] - good[s0]
+    rem = curves[:, s1c] - curves[:, min(k, s1c)]
+    total = done + rem
+    # утренний прогноз — БЕЗ остановок «сейчас»: утром о них ещё никто не знал
+    morning = scenario
+    if parse_events(scenario):
+        f, a = parse_cfg(scenario)
+        morning = f"cfg:{','.join(f)}|{','.join(a)}" if (f or a) else "base"
+    mc = _eta_runs(morning, twin_context()["version"]) if morning != scenario else curves
+    start = mc[:, min(s1, mc.shape[1] - 1)] - mc[:, s0]
+    plan = PLAN_PER_SHIFT
+    q = lambda v: [float(np.percentile(v, 10)), float(np.percentile(v, 90))]  # noqa: E731
+    ended = k >= s1
+    prev = None
+    if s0 == SHIFT:
+        pstart = mc[:, SHIFT] - mc[:, 0]
+        prev = {"actual": float(good[SHIFT] - good[0]), "total_mean": float(pstart.mean()), "total_range": q(pstart), "p_plan": float((pstart >= plan).mean())}
+    return {"prev": prev,"source": "forecast", "shift": 1 if s0 == 0 else 2, "t": k, "shift_start": s0, "shift_end": s1, "plan": plan,
+            "done": float(done), "remaining_mean": float(rem.mean()), "remaining_range": q(rem),
+            "total_mean": float(total.mean()), "total_range": q(total), "p_plan": float((total >= plan).mean()),
+            "start": {"total_mean": float(start.mean()), "total_range": q(start), "p_plan": float((start >= plan).mean())},
+            "ended": ended, "actual": float(good[s1] - good[s0]) if ended else None, "reps": ETA_REPS,
+            "events": [{"station": st, "name": STATION_RU[st], "at": at, "minutes": d} for st, at, d in parse_events(scenario)]}
