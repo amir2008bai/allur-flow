@@ -16,7 +16,10 @@ import math
 from datetime import date as Date
 from datetime import timedelta
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
+from functools import lru_cache
+from threading import RLock
+import json
 
 router = APIRouter(prefix="/api/spc")
 POINTS = 20            # подгрупп на карте (стандартно 20–25)
@@ -24,20 +27,50 @@ LOOKBACK_DAYS = 60
 RUN_SIDE, RUN_TREND = 9, 6
 
 
-def _day_point(d: Date) -> dict | None:
+AREAS = {"welding": "Сварка", "paint": "Окраска", "assembly": "Сборка"}
+_quality_lock = RLock()
+
+
+@lru_cache(maxsize=128)
+def _sim_quality(day: str, scenario: str, seed: int, version: str, facts_key: str | None) -> dict:
+    from .sim.api import _scenario, twin_overlay
+    from .sim.engine import simulate
+    run = simulate(twin_overlay(_scenario(scenario)), seed)
+    return {a: {"n": int(run.produced[a]), "defects": int(run.defects[a])} for a in AREAS}
+
+
+def clear_cache() -> None:
+    with _quality_lock:
+        _sim_quality.cache_clear()
+
+
+def _day_point(d: Date, area: str = "paint") -> dict | None:
     from . import fact_days, journal
-    from .sim.api import run_payload
+    from .sim.api import twin_context, scenario_name
     if journal.day_kind(d) == "off":
         return None
-    r = fact_days.rows(d)
-    paint = next((q for q in r["quality"] if q.area == "paint"), None) if r else None
-    if paint is not None:
-        return {"day": d.isoformat(), "n": paint.produced, "defects": paint.defects, "source": "fact"}
-    rec = journal.record(d)
-    k = run_payload(rec["scenario"], rec["seed"])["kpi"]
-    n = int(k["produced"]["paint"])
-    return {"day": d.isoformat(), "n": n, "defects": int(round(k["defect_pct"]["paint"] * n / 100)), "source": "sim",
-            "conditions": rec.get("conditions")}
+    rows = fact_days.rows(d)
+    quality = [q for q in rows["quality"] if q.area == area] if rows else []
+    if quality:
+        n = sum(q.produced for q in quality)
+        if not n:
+            return None
+        return {"day": d.isoformat(), "n": n, "defects": sum(q.defects for q in quality), "source": "fact",
+                "conditions": fact_days.describe(d)}
+    # Для графика не строим журнал с прогнозами смен и не формируем 3D-кадры/KPI.
+    # Уже сохранённый сценарий дня используется как прежде; один лёгкий прогон даёт все участки.
+    saved = journal.con().execute("SELECT record FROM journal WHERE day=?", (d.isoformat(),)).fetchone()
+    rec = json.loads(saved[0]) if saved else {}
+    if rec.get("facts_key") != fact_days.key(d):
+        rec = {}
+    scenario = rec.get("scenario", journal.day_scenario(d))
+    seed = rec.get("seed", journal.seed_from_date(d))
+    with _quality_lock:
+        stats = _sim_quality(d.isoformat(), scenario, seed, twin_context()["version"], fact_days.key(d))[area]
+    if not stats["n"]:
+        return None
+    return {"day": d.isoformat(), **stats, "source": "sim",
+            "conditions": rec.get("conditions") or (fact_days.describe(d) if rows else scenario_name(scenario))}
 
 
 def signals(points: list[dict]) -> None:
@@ -57,7 +90,7 @@ def signals(points: list[dict]) -> None:
                 p["signals"].append(f"{RUN_TREND} точек подряд {'растут' if w[-1] > w[0] else 'падают'} — тренд")
 
 
-def chart(points: list[dict], norm: float) -> dict:
+def chart(points: list[dict], norm: float, area: str = "paint") -> dict:
     """Средняя, границы, сигналы и вывод для начальника смены."""
     def place(pbar: float) -> None:
         for p in points:
@@ -85,34 +118,56 @@ def chart(points: list[dict], norm: float) -> dict:
         verdict = {"kind": "special", "day": last["day"],
                    "title": "Особая причина: в процессе что-то изменилось",
                    "text": f"{last['day'][8:10]}.{last['day'][5:7]}: {'; '.join(last['signals'])}. Разбирайтесь с этим днём: что поменялось — "
-                           "фильтр, краска, партия кузовов, режим камеры, смена людей. Это повод для разбора (8D), а не обычный разброс."}
+                           f"{CHECKS[area]}. Это повод для разбора (8D); причина пока не доказана."}
     elif pbar > norm:
         before = (f" Последняя особая причина была {past[-1]['day'][8:10]}.{past[-1]['day'][5:7]} — после неё процесс вернулся к обычному уровню." if past else "")
         verdict = {"kind": "chronic",
                    "title": "Процесс стабилен, но его обычный уровень выше нормы",
                    "text": f"Последние дни внутри границ — всплесков нет.{before} Но средний брак {f"{100 * pbar:.1f}".replace(".", ",")}% при норме {100 * norm:g}%: "
                            "это не «плохие дни», а уровень самого процесса. Реагировать на отдельный день бесполезно — "
-                           "нужна мера для всего процесса окраски (оборудование, материал, метод)."}
+                           f"нужна мера для участка «{AREAS[area]}» (оборудование, материал, метод)."}
     else:
         verdict = {"kind": "ok", "title": "Процесс стабилен и в норме",
                    "text": "Последние дни внутри границ, средний брак в норме. Вмешиваться не нужно: подстройка процесса из-за обычного разброса только увеличит брак."}
     return {"pbar": pbar, "norm": norm, "points": points, "verdict": verdict}
 
 
-@router.get("/paint")
-def paint(today: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$")) -> dict:
-    """p-карта брака окраски по последним рабочим дням (до вчера включительно)."""
+CHECKS = {
+    "welding": "швы, электроды, настройки робота, геометрия кузова",
+    "paint": "фильтр, краска, подготовка кузова, режим камеры",
+    "assembly": "комплектующие, крепёж, инструмент, порядок операций",
+}
+
+
+def _control_chart(today: str, area: str) -> dict:
     from .journal import targets
-    td = Date.fromisoformat(today)
+    try:
+        td = Date.fromisoformat(today)
+    except ValueError as error:
+        raise HTTPException(422, "Некорректная дата") from error
     pts = []
     for k in range(1, LOOKBACK_DAYS + 1):
-        p = _day_point(td - timedelta(days=k))
+        d = td - timedelta(days=k)
+        p = _day_point(d) if area == "paint" else _day_point(d, area)
         if p:
             pts.append(p)
         if len(pts) >= POINTS:
             break
     pts.reverse()
-    res = chart(pts, targets()["defect_max_pct"] / 100)
-    res.update({"source": "calc", "facts": sum(p["source"] == "fact" for p in pts),
-                "note": "Точки с данными завода — факт; остальные дни — двойник (симуляция). Границы — 3σ биномиального разброса при объёме дня."})
+    res = chart(pts, targets()["defect_max_pct"] / 100, area)
+    res.update({"source": "calc", "area": area, "name": AREAS[area], "checks": CHECKS[area],
+                "facts": sum(p["source"] == "fact" for p in pts),
+                "note": "Точки с данными завода — факт; остальные дни — двойник. Границы — 3σ при объёме дня."})
     return res
+
+
+@router.get("/paint")
+def paint(today: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$")) -> dict:
+    """Прежний адрес оставлен для брифинга, 8D и копилота."""
+    return _control_chart(today, "paint")
+
+
+@router.get("/quality")
+def quality(today: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
+            area: str = Query("paint", pattern=r"^(welding|paint|assembly)$")) -> dict:
+    return _control_chart(today, area)

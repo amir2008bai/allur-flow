@@ -136,8 +136,9 @@ def _clear_caches() -> None:
     from .learn import api as learn_api, stream
     from .sim import api as sim_api
     from . import stress_api
-    from . import journal
+    from . import journal, spc
     journal.clear_forecast_cache()
+    spc.clear_cache()
     main.facts.cache_clear()
     sim_api.run_payload.cache_clear(); sim_api._whatif.cache_clear(); sim_api.futures_payload.cache_clear(); sim_api._eta_runs.cache_clear()
     learn_api.forecast_payload.cache_clear(); stream.emulate.cache_clear(); stress_api._run.cache_clear()

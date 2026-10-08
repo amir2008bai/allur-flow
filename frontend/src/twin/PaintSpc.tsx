@@ -4,9 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { todayISO } from '../dates'
 import { Card, SourceBadge } from '../ui'
 import { useView } from './store'
+import { journalRequest } from './journalRequest'
 
 interface Point { day: string; n: number; defects: number; p: number; ucl: number; lcl: number; source: 'fact' | 'sim'; signals: string[]; conditions?: string }
-interface Spc { pbar: number; norm: number; points: Point[]; facts: number; verdict: { kind: 'special' | 'chronic' | 'ok'; title: string; text: string; day?: string } }
+type Area = 'welding' | 'paint' | 'assembly'
+const AREAS: { id: Area; name: string }[] = [{ id: 'welding', name: 'Сварка' }, { id: 'paint', name: 'Окраска' }, { id: 'assembly', name: 'Сборка' }]
+interface Spc { area: Area; checks: string; pbar: number; norm: number; points: Point[]; facts: number; verdict: { kind: 'special' | 'chronic' | 'ok'; title: string; text: string; day?: string } }
 
 const pc = (x: number) => `${(100 * x).toFixed(1).replace('.', ',')}%`
 const dm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`
@@ -14,9 +17,22 @@ const dm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`
 /** Контрольная карта брака окраски (p-карта Шухарта): обычный разброс процесса или особая причина. */
 export default function PaintSpc() {
   const [d, setD] = useState<Spc | null>(null)
+  const [area, setArea] = useState<Area>('paint')
+  const [error, setError] = useState<string | null>(null)
+  const [tick, setTick] = useState(0)
   const setDate = useView((v) => v.setDate)
   const today = todayISO()
-  useEffect(() => { fetch(`/api/spc/paint?today=${today}`).then((r) => (r.ok ? r.json() : null)).then(setD).catch(() => {}) }, [today])
+  useEffect(() => {
+    const controller = new AbortController()
+    setD(null); setError(null)
+    journalRequest<Spc>(`/api/spc/quality?today=${today}&area=${area}`, { signal: controller.signal })
+      .then(data => {
+        if (data.area !== area || !Array.isArray(data.points) || !data.verdict) throw new Error('Сервер вернул неполную карту брака.')
+        if (!controller.signal.aborted) setD(data)
+      })
+      .catch((e: Error) => { if (!controller.signal.aborted) setError(e.message) })
+    return () => controller.abort()
+  }, [today, area, tick])
 
   const option = useMemo(() => {
     if (!d) return null
@@ -53,53 +69,33 @@ export default function PaintSpc() {
     }
   }, [d])
 
-  if (!d || !option) return <Card className="p-5 text-sm text-slate-500">Строю контрольную карту брака окраски…</Card>
-  const v = d.verdict
-  const tone = v.kind === 'special' ? 'bg-red-50 text-red-800 ring-red-200' : v.kind === 'chronic' ? 'bg-amber-50 text-amber-900 ring-amber-200' : 'bg-emerald-50 text-emerald-800 ring-emerald-200'
-  const Icon = v.kind === 'ok' ? CheckCircle2 : AlertTriangle
-  const special = d.points.filter((p) => p.signals.length)
-
-  return (
-    <Card className="p-5">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-slate-700"><Activity size={18} /></span>
-          <div>
-            <h2 className="text-lg font-semibold leading-tight">Контрольная карта брака окраски</h2>
-            <p className="text-sm text-slate-500">Брак этого дня — обычный разброс или что-то сломалось? Последние {d.points.length} рабочих дней.</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5"><SourceBadge source="calc" />{d.facts > 0 && <SourceBadge source="fact" />}<SourceBadge source="sim" /></div>
-      </div>
-
-      <div className={`flex items-start gap-2 rounded-2xl px-4 py-3 ring-1 ${tone}`}>
-        <Icon size={16} className="mt-0.5 shrink-0" />
-        <div><div className="text-sm font-semibold">{v.title}</div><div className="mt-0.5 text-sm opacity-90">{v.text}</div></div>
-      </div>
-
-      <div className="mt-3 h-56"><ReactECharts option={option} style={{ height: '100%' }} notMerge
-        onEvents={{ click: (e: { dataIndex: number }) => { const p = d.points[e.dataIndex]; if (p) setDate(p.day) } }} /></div>
-
-      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
-        <span className="flex items-center gap-1"><span className="h-2 w-2 bg-slate-900" />данные завода</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-sky-500" />двойник</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-600" />особая причина</span>
-        <span>средний уровень {pc(d.pbar)} · норма {pc(d.norm)} · клик по точке — открыть день</span>
-      </div>
-
-      {special.length > 0 && (
-        <ul className="mt-3 space-y-1">
-          {special.map((p) => (
-            <li key={p.day} className="text-xs text-slate-600"><b className="text-red-700">{dm(p.day)}</b> — брак {pc(p.p)}: {p.signals.join('; ')}{p.conditions && p.conditions !== 'штатная смена' ? ` · условия дня: ${p.conditions}` : ''}</li>
-          ))}
-        </ul>
-      )}
-
-      <p className="mt-3 flex items-start gap-1.5 text-[11px] text-slate-400">
-        <Info size={12} className="mt-0.5 shrink-0" />
-        Карта Шухарта — стандартный инструмент качества в автопроме. Границы — 3σ обычного разброса при объёме дня (меньше кузовов — шире границы).
-        Сигналы: точка за границей, 9 дней подряд по одну сторону средней, 6 дней подряд рост или падение. Внутри границ процесс не «подкручивают» — это только увеличит брак.
-      </p>
-    </Card>
-  )
+  const current = d?.area === area ? d : null
+  const v = current?.verdict
+  const tone = v?.kind === 'special' ? 'bg-red-50 text-red-800' : v?.kind === 'chronic' ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-800'
+  const Icon = v?.kind === 'ok' ? CheckCircle2 : AlertTriangle
+  return <Card className="p-4 sm:p-5">
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <h2 className="flex items-center gap-2 text-lg font-semibold"><Activity size={18} />Контроль брака</h2>
+      <div className="flex gap-1.5"><SourceBadge source="calc" />{current && current.facts > 0 && <SourceBadge source="fact" />}{current && current.points.some(p => p.source === 'sim') && <SourceBadge source="sim" />}</div>
+    </div>
+    <div className="mb-3 flex gap-2" role="tablist" aria-label="Участок контроля брака">
+      {AREAS.map(a => <button key={a.id} role="tab" id={`quality-tab-${a.id}`} aria-selected={area === a.id} aria-controls="quality-panel" onClick={() => setArea(a.id)} className={`rounded-xl px-3 py-2 text-sm font-medium ${area === a.id ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}>{a.name}</button>)}
+    </div>
+    <div role="tabpanel" id="quality-panel" aria-labelledby={`quality-tab-${area}`}>
+      {error ? <div role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{error}<button onClick={() => setTick(x => x + 1)} className="ml-3 rounded-lg bg-white px-3 py-2 font-medium">Повторить</button></div>
+        : !current || !v || !option ? <div role="status" className="py-5 text-sm text-slate-500">Строю график брака…</div>
+        : !current.points.length ? <p className="text-sm text-slate-500">Пока нет дней с выпуском на этом участке.</p>
+        : <>
+          <div className={`flex items-start gap-2 rounded-xl px-3 py-2 ${tone}`}><Icon size={16} className="mt-0.5 shrink-0" /><div className="text-sm"><b>{v.title}</b><details className="mt-1"><summary className="cursor-pointer text-xs">Что это значит</summary><p className="mt-1">{v.text}</p></details></div></div>
+          <div className="mt-3 h-56"><ReactECharts option={option} style={{ height: '100%' }} notMerge onEvents={{ click: (e: { dataIndex: number }) => { const p = current.points[e.dataIndex]; if (p) setDate(p.day) } }} /></div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500"><span>■ данные завода · ● двойник</span><span>Красная точка — необычный брак</span><span>Средний {pc(current.pbar)} · норма {pc(current.norm)}</span></div>
+          <p className="mt-2 text-xs text-slate-500"><b>Что проверить:</b> {current.checks}. Это возможные факторы, а не доказанные причины.</p>
+          <details className="mt-3 text-xs text-slate-500"><summary className="cursor-pointer">Таблица по дням · {current.points.length} записей</summary>
+            <div className="mt-2 max-h-64 overflow-auto"><table className="w-full text-left text-xs"><thead><tr className="text-slate-400"><th className="py-2 font-normal">День</th><th className="py-2 font-normal">Брак / выпуск</th><th className="py-2 font-normal">Брак, %</th><th className="py-2 font-normal">Источник</th></tr></thead><tbody className="divide-y divide-slate-100">{current.points.map(p => <tr key={p.day}><td className="py-2"><button onClick={() => setDate(p.day)} className="font-medium text-slate-700 underline decoration-slate-200 underline-offset-4">{dm(p.day)}</button></td><td>{p.defects} / {p.n}</td><td className={p.signals.length ? 'font-semibold text-red-600' : ''}>{pc(p.p)}</td><td>{p.source === 'fact' ? 'Факт' : 'Двойник'}</td></tr>)}</tbody></table></div>
+          </details>
+          {current.points.some(p => p.signals.length) && <details className="mt-2 text-xs text-slate-500"><summary className="cursor-pointer">Дни, которые требуют разбора</summary><ul className="mt-2 space-y-2">{current.points.filter(p => p.signals.length).map(p => <li key={p.day}><b>{dm(p.day)}</b>: {p.signals.join('; ')}{p.conditions && ` · ${p.conditions}`}</li>)}</ul></details>}
+          <details className="mt-2 text-[11px] text-slate-400"><summary className="flex cursor-pointer items-center gap-1"><Info size={12} />Как читать график</summary><p className="mt-1">Пунктир — границы обычного разброса (3σ), зелёная линия — норма. Сигнал: точка вне границ, 9 точек по одну сторону среднего или 6 точек с ростом/падением. Факты и модельные дни показаны вместе: эта карта демонстрирует работу контроля, вывод о заводе требует реальных данных. Клик по точке открывает день.</p></details>
+        </>}
+    </div>
+  </Card>
 }
