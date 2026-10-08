@@ -129,7 +129,7 @@ def test_journal_day_record_saved_once_and_honest():
     from datetime import date
     from app import journal
     d = date(2026, 10, 6)
-    journal.con().execute("DELETE FROM journal WHERE day=?", (d.isoformat(),))
+    journal.con().execute("DELETE FROM journal WHERE day=?", (d.isoformat(),)); journal.con().commit()   # без commit база остаётся занятой
     r1 = journal.record(d)
     r2 = journal.record(d)
     assert r1["saved_at"] == r2["saved_at"]                       # запись делается один раз
@@ -315,7 +315,7 @@ def test_briefing_collects_day_on_one_page():
     assert len(s) == 2 and all(0 <= x["p_plan"] <= 1 and x["lo"] <= x["mean"] <= x["hi"] for x in s)
     assert b["yesterday"]["day"] == "2026-10-07" and b["repair_order"][0]["station"] == "assembly"
     texts = " ".join(r["text"] for r in b["risks"])
-    assert "не согласован" in texts                      # правило №4: план 5 500 — несогласованность, а не недовыпуск
+    assert "несогласованность плана" in " ".join(r.get("note", "") for r in b["risks"])   # правило №4: всегда на виду
     assert any(r["where"] == "paint-spc" for r in b["risks"])
     lv = [r["level"] for r in b["risks"]]
     assert lv == sorted(lv, key={"high": 0, "medium": 1, "low": 2}.get)

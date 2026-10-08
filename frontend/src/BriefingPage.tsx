@@ -1,4 +1,4 @@
-import { ArrowRight, CalendarDays, ClipboardCheck, Printer, ShieldAlert, Sunrise, Wrench } from 'lucide-react'
+import { ArrowRight, Printer, Sunrise } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { longDate, todayISO } from './dates'
 import { tenge, useMoney } from './money'
@@ -8,30 +8,31 @@ import { useView } from './twin/store'
 type Src = 'fact' | 'sim' | 'forecast' | 'calc'
 interface ShiftF { shift: number; hours: string; plan: number; mean: number; lo: number; hi: number; p_plan: number }
 interface Briefing {
-  date: string; weekday: string; kind: 'work' | 'off' | 'maint'; note: string
+  date: string; kind: 'work' | 'off' | 'maint'; note: string
   forecast: { shifts: ShiftF[]; day: { plan: number; mean: number; lo: number; hi: number; p_plan: number }; reps: number }
-  action: { now_per_shift: number; plan_per_shift: number; gap: number; names: string[]; delta: number; ci: [number, number]; closes_gap: boolean; money: { month: number; once: number } | null }
-  repair_order: { station: string; name: string; loss_per_min: number; loss_per_hour: number; limits_output: boolean }[]
-  quality: { kind: 'special' | 'chronic' | 'ok'; title: string; text: string; pbar: number; norm: number }
+  action: { names: string[]; delta: number; closes_gap: boolean; money: { month: number; once: number } | null }
+  repair_order: { station: string; name: string; loss_per_min: number }[]
+  quality: { kind: 'special' | 'chronic' | 'ok' }
   containment: string | null
-  yesterday: { day: string; fact: number; plan: number; pct: number; conditions: string; norms: string[]; losses: { name: string; reason: string; minutes: number }[]; hits: number; shifts: number; source: string; has_facts: boolean } | null
-  month: { fact: number; plan_to_date: number; mean: number; range: [number, number]; p_plan: number; plan: number; need_per_day: number | null; daily: number; by_days: number; by_models: number; remaining_days: number }
-  capa: { action: string; start_day: string; verdict: string; title: string; demo: boolean }[]
-  risks: { level: 'high' | 'medium' | 'low'; text: string; where: string; source: Src }[]
+  yesterday: { day: string; fact: number; plan: number; pct: number; has_facts: boolean } | null
+  month: { fact: number; plan_to_date: number; mean: number; plan: number; need_per_day: number | null; daily: number }
+  risks: { level: 'high' | 'medium' | 'low'; text: string; detail?: string; note?: string; where: string; source: Src }[]
 }
 
 const int = (x: number) => Math.round(x).toLocaleString('ru-RU')
 const n1 = (x: number) => x.toFixed(1).replace('.', ',')
-const pct = (x: number) => `${Math.round(100 * x)}%`
-const pTone = (p: number) => (p >= 0.8 ? 'text-emerald-600' : p >= 0.5 ? 'text-amber-600' : 'text-red-600')
-const LEVEL = { high: 'bg-red-500', medium: 'bg-amber-500', low: 'bg-slate-400' }
+const chance = (p: number) => `${Math.round(100 * p)}%`
+const tone = (p: number) => (p >= 0.8 ? 'text-emerald-600' : p >= 0.5 ? 'text-amber-600' : 'text-red-600')
+const DOT = { high: 'bg-red-500', medium: 'bg-amber-500', low: 'bg-slate-400' }
+const MAX_RISKS = 3
+const GEN: Record<string, string> = { welding: 'сварки', paint: 'окраски', assembly: 'сборки', qc: 'ОТК' }
+const low1 = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
 
-/** Перейти на «Двойник» к нужному блоку: вкладка грузится лениво — ждём, пока блок появится. */
+/** Перейти на «Двойник» к нужному блоку: блоки выше грузятся и сдвигают страницу — докручиваем, пока позиция не устоится. */
 function useGo() {
   const setTab = useView((v) => v.setTab)
   return (anchor: string) => {
     setTab('twin')
-    // блоки выше грузятся и сдвигают страницу: докручиваем, пока позиция блока не перестанет меняться
     let n = 0, lastTop = NaN, still = 0
     const t = setInterval(() => {
       const el = document.getElementById(anchor)
@@ -47,27 +48,16 @@ function useGo() {
   }
 }
 
-function More({ to, label = 'подробнее' }: { to: string; label?: string }) {
+function Go({ to }: { to: string }) {
   const go = useGo()
-  return <button onClick={() => go(to)} className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:text-sky-900 print:hidden">{label}<ArrowRight size={12} /></button>
+  return <button onClick={() => go(to)} aria-label="Подробнее" title="Подробнее" className="ml-1 inline-flex shrink-0 rounded-md p-0.5 text-sky-600 hover:bg-sky-50 hover:text-sky-800 print:hidden"><ArrowRight size={14} /></button>
 }
 
-function Block({ icon, title, source, children }: { icon: React.ReactNode; title: string; source?: Src; children: React.ReactNode }) {
-  return (
-    <Card className="p-5 print:break-inside-avoid print:shadow-none">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800"><span className="text-slate-500">{icon}</span>{title}</div>
-        {source && <SourceBadge source={source} />}
-      </div>
-      {children}
-    </Card>
-  )
-}
-
-/** Утренний брифинг начальника смены: прогноз, риски, что сделать, вчера и месяц — на одной странице. */
+/** Утренний брифинг начальника смены: коротко — сколько сделаем, что мешает, что сделать. */
 export default function BriefingPage() {
   const [b, setB] = useState<Briefing | null>(null)
   const [err, setErr] = useState(false)
+  const [allRisks, setAllRisks] = useState(false)
   const money = useMoney()
   const today = todayISO()
   useEffect(() => {
@@ -77,112 +67,98 @@ export default function BriefingPage() {
   }, [today])
 
   if (err) return <Card className="p-6 text-sm text-slate-500">Брифинг собирается на сервере — нет связи с сервером.</Card>
-  if (!b) return <Card className="p-6 text-sm text-slate-500">Собираю брифинг: прогноз смен, риски, вчерашний день…</Card>
-  const f = b.forecast
+  if (!b) return <Card className="p-6 text-sm text-slate-500">Собираю брифинг…</Card>
+  const d = b.forecast.day
   const a = b.action
-  const first = b.repair_order[0]
   const y = b.yesterday
   const m = b.month
+  const risks = allRisks ? b.risks : b.risks.slice(0, MAX_RISKS)
+  const verdict = d.p_plan >= 0.8 ? 'план дня скорее всего выполним' : d.p_plan >= 0.5 ? 'план дня на грани' : 'план дня под угрозой'
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="mx-auto max-w-3xl space-y-3">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-sm text-slate-500"><Sunrise size={16} />Утренний брифинг · 08:00</div>
-          <h1 className="text-2xl font-semibold tracking-tight first-letter:uppercase">{longDate(b.date)}</h1>
-          {b.kind !== 'work' && <div className="mt-1 text-sm text-amber-700">{b.kind === 'off' ? 'По календарю сегодня выходной — прогноз дан для рабочего дня.' : 'Сегодня отмечено ТО 4 ч.'}</div>}
+          <div className="flex items-center gap-1.5 text-xs text-slate-500"><Sunrise size={14} />Брифинг на 08:00</div>
+          <h1 className="text-xl font-semibold tracking-tight first-letter:uppercase sm:text-2xl">{longDate(b.date)}</h1>
+          {b.kind !== 'work' && <div className="text-sm text-amber-700">{b.kind === 'off' ? 'По календарю выходной — ниже прогноз для рабочего дня.' : 'Сегодня ТО 4 ч.'}</div>}
         </div>
-        <button onClick={() => window.print()} className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 active:scale-[.98] print:hidden"><Printer size={15} />Распечатать</button>
+        <button onClick={() => window.print()} title="Распечатать" aria-label="Распечатать" className="rounded-xl bg-white p-2 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 print:hidden"><Printer size={16} /></button>
       </div>
 
-      {/* прогноз смен и дня */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        {[...f.shifts.map((s) => ({ k: `Смена ${s.hours}`, ...s })), { k: 'Весь день', ...f.day, hours: '' }].map((s) => (
-          <Card key={s.k} className="p-4 print:shadow-none">
-            <div className="flex items-center justify-between text-xs text-slate-500">{s.k}<SourceBadge source="forecast" /></div>
-            <div className="mt-1 flex items-baseline gap-2"><span className="text-3xl font-semibold tabular-nums">≈ {int(s.mean)}</span><span className="text-sm text-slate-500">из {s.plan}</span></div>
-            <div className="text-xs tabular-nums text-slate-500">обычно {int(s.lo)}–{int(s.hi)}</div>
-            <div className={`mt-1 text-sm font-semibold ${pTone(s.p_plan)}`}>план — вероятность {pct(s.p_plan)}</div>
-          </Card>
-        ))}
-      </div>
-      <p className="-mt-1 text-[11px] text-slate-400">{b.note} Прогноз — {f.reps} прогонов двойника обычного дня.</p>
+      {/* 1. Сколько сделаем */}
+      <Card className="p-5 print:shadow-none">
+        <div className="flex items-center justify-between text-xs text-slate-500">Сегодня сделаем <SourceBadge source="forecast" /></div>
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-3">
+          <span className="text-4xl font-semibold tabular-nums">≈ {int(d.mean)}</span>
+          <span className="text-slate-500">машин из {d.plan}</span>
+        </div>
+        <div className={`mt-0.5 font-semibold ${tone(d.p_plan)}`}>{verdict} · шанс {chance(d.p_plan)}</div>
+        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+          {b.forecast.shifts.map((s) => (
+            <span key={s.shift} className="rounded-full bg-slate-50 px-2.5 py-1 tabular-nums text-slate-600 ring-1 ring-slate-100">
+              {s.hours}: ≈ {int(s.mean)} из {s.plan} · <b className={tone(s.p_plan)}>шанс {chance(s.p_plan)}</b>
+            </span>
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] text-slate-400" title={b.note}>Утренний прогноз: внезапные поломки дня в нём не учтены.</p>
+      </Card>
 
-      {/* риски */}
-      <Block icon={<ShieldAlert size={16} />} title="Главные риски сегодня">
-        {b.risks.length === 0 ? <div className="text-sm text-emerald-700">Серьёзных рисков нет.</div> : (
-          <ul className="space-y-2">
-            {b.risks.map((r) => (
-              <li key={r.text} className="flex items-start gap-2.5 text-sm">
-                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${LEVEL[r.level]}`} />
-                <span className="min-w-0 flex-1">{r.text}</span>
-                <span className="shrink-0 print:hidden"><SourceBadge source={r.source as Src} /></span>
+      {/* 2. Что мешает */}
+      <Card className="p-5 print:shadow-none">
+        <div className="mb-2 text-sm font-semibold">Что мешает</div>
+        {b.risks.length === 0 ? <div className="text-sm text-emerald-700">Ничего серьёзного.</div> : (
+          <ul className="space-y-2.5">
+            {risks.map((r) => (
+              <li key={r.text} className="flex items-start gap-2.5 text-sm" title={r.detail}>
+                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${DOT[r.level]}`} />
+                <span className="min-w-0 flex-1">{r.text}<Go to={r.where} />{r.note && <span className="mt-0.5 block text-xs text-slate-500">{r.note}</span>}</span>
               </li>
             ))}
           </ul>
         )}
-      </Block>
+        {b.risks.length > MAX_RISKS && (
+          <button onClick={() => setAllRisks((x) => !x)} className="mt-2 text-xs font-medium text-slate-500 hover:text-slate-800 print:hidden">
+            {allRisks ? 'свернуть' : `ещё ${b.risks.length - MAX_RISKS}`}
+          </button>
+        )}
+      </Card>
 
-      {/* что сделать */}
-      <Block icon={<Wrench size={16} />} title="Что сделать сегодня">
-        <ol className="space-y-3 text-sm">
-          <li>
-            <b>1. Главное действие.</b>{' '}
-            {a.names.length ? <>
-              {a.names.join(' + ')}: <b className="text-emerald-700">+{n1(a.delta)} машины за смену</b> <span className="text-xs text-slate-500">({n1(a.ci[0])}…{n1(a.ci[1])})</span>
-              {' '}≈ <b>{tenge(a.delta * money.margin)}</b> за смену{a.closes_gap ? ' — план смены выполняется' : ''}.
-              {a.money && <span className="text-xs text-slate-500"> Затраты: {tenge(a.money.month)} в месяц{a.money.once ? `, разово ${tenge(a.money.once)}` : ''}.</span>}
-            </> : 'Ни одно действие не даёт подтверждённого прироста — работаем в обычном режиме.'}
-            {' '}<SourceBadge source="sim" />
-            <div><More to="actions" label="все действия" /></div>
-          </li>
-          {first && (
-            <li>
-              <b>2. Если сломается несколько участков сразу</b> — ремонт по порядку: {b.repair_order.map((r) => `${r.name.toLowerCase()} (${tenge(r.loss_per_min * money.margin)}/мин)`).join(' → ')}.
-              {' '}<SourceBadge source="sim" />
-              <div><More to="station-value" /></div>
-            </li>
+      {/* 3. Что сделать */}
+      <Card className="p-5 print:shadow-none">
+        <div className="mb-2 flex items-center justify-between text-sm font-semibold">Что сделать <SourceBadge source="sim" /></div>
+        <ol className="space-y-2.5 text-sm">
+          {a.names.length > 0 && (
+            <li className="flex gap-2"><b className="text-slate-400">1</b><span>
+              {a.names.map((n, i) => (i ? low1(n) : n)).join(' и ')} — <b className="text-emerald-700">+{n1(a.delta)} машины за смену</b> (≈ {tenge(a.delta * money.margin)}){a.closes_gap ? ', и план смены выполнен' : ''}.<Go to="actions" />
+            </span></li>
+          )}
+          {b.repair_order.length > 0 && (
+            <li className="flex gap-2"><b className="text-slate-400">{a.names.length ? 2 : 1}</b><span>
+              Если сломалось сразу несколько участков — чините по порядку: <b>{b.repair_order.map((r) => r.name.toLowerCase()).join(' → ')}</b>. Минута простоя {GEN[b.repair_order[0].station] ?? b.repair_order[0].name.toLowerCase()} стоит {tenge(b.repair_order[0].loss_per_min * money.margin)}.<Go to="station-value" />
+            </span></li>
           )}
           {b.containment && (
-            <li>
-              <b>3. Брак окраски.</b> {b.quality.title}. {b.containment}
-              {' '}<SourceBadge source="calc" />
-              <div><More to="paint-spc" label="контрольная карта" /></div>
-            </li>
+            <li className="flex gap-2"><b className="text-slate-400">{(a.names.length ? 1 : 0) + (b.repair_order.length ? 1 : 0) + 1}</b><span>
+              Брак окраски: осматривайте все кузова после окраски и сразу отправляйте дефектные на ремонт.<Go to="capa" />
+            </span></li>
           )}
         </ol>
-      </Block>
+      </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* 4. Вчера и месяц — одной строкой */}
+      <div className="grid gap-3 sm:grid-cols-2">
         {y && (
-          <Block icon={<CalendarDays size={16} />} title={`Вчера · ${longDate(y.day)}`} source={y.has_facts ? 'fact' : 'sim'}>
-            <div className="text-sm">
-              <b className="tabular-nums">{int(y.fact)}</b> из {y.plan} ({Math.round(y.pct)}%) · утренний прогноз попал в коридор в {y.hits} из {y.shifts} смен
-            </div>
-            <div className="mt-1 text-xs text-slate-500">{y.conditions}</div>
-            {y.losses.length > 0 && <div className="mt-1 text-xs text-slate-600">Больше всего съело: {y.losses.map((l) => `${l.name.toLowerCase()} — ${l.reason.toLowerCase()} ${l.minutes} мин`).join('; ')}</div>}
-            {y.norms.length > 0 && <ul className="mt-1.5 space-y-0.5 text-xs text-red-700">{y.norms.map((n) => <li key={n}>• {n}</li>)}</ul>}
-            <More to="journal" label="журнал" />
-          </Block>
+          <Card className="p-4 print:shadow-none">
+            <div className="flex items-center justify-between text-xs text-slate-500">Вчера <SourceBadge source={y.has_facts ? 'fact' : 'sim'} /></div>
+            <div className="mt-1 text-sm"><b className="tabular-nums">{int(y.fact)}</b> из {y.plan} · {y.pct >= 100 ? <span className="text-emerald-700">план выполнен</span> : <span className="text-amber-700">не хватило {int(y.plan - y.fact)}</span>}<Go to="journal" /></div>
+          </Card>
         )}
-        <Block icon={<CalendarDays size={16} />} title="Месяц" source="forecast">
-          <div className="text-sm">
-            Сделано <b className="tabular-nums">{int(m.fact)}</b> из {int(m.plan_to_date)} · к концу месяца ≈ <b className="tabular-nums">{int(m.mean)}</b> <span className="text-xs text-slate-500">(обычно {int(m.range[0])}–{int(m.range[1])})</span>
-          </div>
-          <div className={`mt-1 text-sm font-semibold ${pTone(m.p_plan)}`}>цель {int(m.plan)}: вероятность {pct(m.p_plan)}{m.need_per_day ? ` · нужно ≈ ${int(m.need_per_day)} в день при плане ${m.daily}` : ''}</div>
-          <div className="mt-1 text-xs text-amber-800">План в ТЗ не согласован: «не менее {int(m.plan)}», по дням {int(m.by_days)}, по моделям {int(m.by_models)} — это несогласованность плана, а не недовыпуск.</div>
-          <More to="journal" label="календарь месяца" />
-        </Block>
+        <Card className="p-4 print:shadow-none">
+          <div className="flex items-center justify-between text-xs text-slate-500">Месяц <SourceBadge source="forecast" /></div>
+          <div className="mt-1 text-sm">сделано <b className="tabular-nums">{int(m.fact)}</b> из {int(m.plan_to_date)} · к концу ≈ {int(m.mean)}<Go to="journal" /></div>
+        </Card>
       </div>
-
-      {b.capa.length > 0 && (
-        <Block icon={<ClipboardCheck size={16} />} title="Разбор брака: проверка действий" source="calc">
-          <ul className="space-y-1 text-sm">
-            {b.capa.map((c) => <li key={c.action + c.start_day}><b>{c.action}</b> — {c.title}{c.demo ? ' (демо на днях двойника)' : ''}</li>)}
-          </ul>
-          <More to="capa" />
-        </Block>
-      )}
     </div>
   )
 }

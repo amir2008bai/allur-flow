@@ -63,38 +63,37 @@ def _yesterday(td: Date) -> dict | None:
 
 
 def _risks(fc: dict, spc: dict, month: dict, yest: dict | None, value: dict, capa_items: list[dict]) -> list[dict]:
-    """Риски дня: уровень (high/medium/low), текст и куда смотреть подробнее."""
+    """Риски дня простым языком: уровень (high/medium/low), короткий текст, подробности (detail) и куда смотреть."""
     out = []
+    pc = lambda x: f"{100 * x:.1f}".replace(".", ",")  # noqa: E731
+    sp = lambda x: f"{round(x):,}".replace(",", " ")  # noqa: E731
     s1 = fc["shifts"][0]
-    if s1["p_plan"] < 0.5:
-        out.append({"level": "high", "text": f"План смены 08–16 под угрозой: вероятность {round(100 * s1['p_plan'])}%", "where": "shift-builder", "source": "forecast"})
-    elif s1["p_plan"] < 0.8:
-        out.append({"level": "medium", "text": f"План смены 08–16 — на грани: вероятность {round(100 * s1['p_plan'])}%", "where": "shift-builder", "source": "forecast"})
+    if s1["p_plan"] < 0.8:
+        out.append({"level": "high" if s1["p_plan"] < 0.5 else "medium",
+                    "text": f"Смена 08–16 может не дотянуть до плана — шанс {round(100 * s1['p_plan'])}%",
+                    "where": "shift-builder", "source": "forecast"})
     v = spc["verdict"]
     if v["kind"] == "special":
-        out.append({"level": "high", "text": f"Брак окраски: {v['title'].lower()}", "where": "paint-spc", "source": "calc"})
+        out.append({"level": "high", "text": "Брак окраски резко вырос — в процессе что-то сломалось, разберитесь сегодня",
+                    "detail": v["text"], "where": "paint-spc", "source": "calc"})
     elif v["kind"] == "chronic":
-        out.append({"level": "medium", "text": f"Брак окраски стабильно {100 * spc['pbar']:.1f}% при норме {100 * spc['norm']:g}% — нужна системная мера".replace(".", ",", 1),
-                    "where": "paint-spc", "source": "calc"})
-    lim = next((r for r in value["stations"] if r["limits_output"]), None)
-    if lim:
-        out.append({"level": "medium", "text": f"Ограничитель — {lim['name'].lower()}: час её простоя стоит {lim['loss_per_hour']:.1f} машины. При поломке — ремонт первой".replace(".", ",", 1),
-                    "where": "station-value", "source": "sim"})
+        out.append({"level": "medium", "text": f"Брак окраски держится около {pc(spc['pbar'])}% (норма {100 * spc['norm']:g}%) — это не случайность, нужна общая мера",
+                    "detail": v["text"], "where": "paint-spc", "source": "calc"})
     f = month["forecast"]
     if f["p_plan"] < 0.5:
         pl = month["plans"]
-        sp = lambda x: f"{round(x):,}".replace(",", " ")  # noqa: E731
-        # план в ТЗ не согласован (правило №4): называем все три цифры, а не «недовыпуск»
+        # план в ТЗ не согласован (правило №4): называем все цифры, а не «недовыпуск»
         out.append({"level": "high" if f["total_mean"] < pl["by_days"] else "medium",
-                    "text": f"Цель {sp(pl['month'])} в месяц не достигается: прогноз ≈ {sp(f['total_mean'])}"
-                            + (f", нужно ≈ {round(pl['need_per_day'])} в день" if pl["need_per_day"] else "")
-                            + f". План в ТЗ не согласован: по дням {sp(pl['by_days'])}, по моделям {sp(pl['by_models'])}",
+                    "text": f"За месяц выйдет ≈ {sp(f['total_mean'])}, а цель {sp(pl['month'])}"
+                            + (f" — нужно ≈ {round(pl['need_per_day'])} в день вместо {pl['daily']}" if pl["need_per_day"] else ""),
+                    "note": f"План в ТЗ разный: «не менее {sp(pl['month'])}», по дням {sp(pl['by_days'])}, по моделям {sp(pl['by_models'])} — это несогласованность плана, а не недовыпуск.",
                     "where": "journal", "source": "forecast"})
     if yest and yest["norms"]:
-        out.append({"level": "medium", "text": f"Вчера нарушены нормы: {'; '.join(yest['norms'][:2])}", "where": "journal", "source": yest["source"]})
+        out.append({"level": "medium", "text": "Вчера нарушены нормы: " + "; ".join(n.split(" — ")[0] for n in yest["norms"][:2]),
+                    "where": "journal", "source": yest["source"]})
     bad = [a for a in capa_items if a["check"]["verdict"] == "not_confirmed"]
     if bad:
-        out.append({"level": "low", "text": f"Действие «{bad[0]['action']}» не дало подтверждённого эффекта — вернуться к причинам", "where": "capa", "source": "calc"})
+        out.append({"level": "low", "text": f"«{bad[0]['action']}» пока не снизило брак — ищите другую причину", "where": "capa", "source": "calc"})
     order = {"high": 0, "medium": 1, "low": 2}
     return sorted(out, key=lambda r: order[r["level"]])
 
