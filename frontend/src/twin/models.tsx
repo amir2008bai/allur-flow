@@ -3,6 +3,7 @@
 import { RoundedBox } from '@react-three/drei'
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
+import { StaticBatch } from './StaticBatch'
 import { Drive, clamp01, damp, easeInOutCubic } from './motion'
 import { useMotionFrame } from './SceneMotion'
 import { WELD_SEAMS, weldPose, type Point3 } from './kinematics'
@@ -55,6 +56,7 @@ const hubGeo = new THREE.CylinderGeometry(0.085, 0.085, 0.106, 12).rotateX(Math.
 export function Sedan({ position, color = '#f7f8fa', scale = 1, rotY = Math.PI / 2, wheels = true, unfinished = false, detailed = true }: { position: [number, number, number]; color?: string; scale?: number; rotY?: number; wheels?: boolean; unfinished?: boolean; detailed?: boolean }) {
   return (
     <group position={position} scale={scale} rotation={[0, rotY, 0]}>
+      <StaticBatch key={`${color}-${wheels}-${unfinished}-${detailed}`}>
       <mesh castShadow geometry={sedanGeo} dispose={null}><meshStandardMaterial color={color} roughness={unfinished ? 0.48 : 0.27} metalness={unfinished ? 0.5 : 0.32} /></mesh>
       {!unfinished && <>
         {[-0.386, 0.386].map((z) => <mesh key={z} position={[0, 0, z]} geometry={glassGeo} dispose={null}>
@@ -88,6 +90,7 @@ export function Sedan({ position, color = '#f7f8fa', scale = 1, rotY = Math.PI /
           {detailed && <mesh geometry={hubGeo} dispose={null}><meshStandardMaterial {...ALU} /></mesh>}
         </group>
       ))}
+      </StaticBatch>
     </group>
   )
 }

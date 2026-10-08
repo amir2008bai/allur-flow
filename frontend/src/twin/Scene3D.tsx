@@ -44,7 +44,7 @@ function Beacon({ state, y }: { state: StationState; y: number }) {
   )
 }
 
-function Equipment({ zone, state }: { zone: Zone; state: StationState | null }) {
+const Equipment = React.memo(function Equipment({ zone, state }: { zone: Zone; state: StationState | null }) {
   const working = state === 'working'
   switch (zone.id) {
     case 'welding':
@@ -63,7 +63,7 @@ function Equipment({ zone, state }: { zone: Zone; state: StationState | null }) 
     default:
       return <Racks />
   }
-}
+})
 
 /** Мягкое свечение вокруг участка: зелёное — идёт работа, жёлтое — затор, красное — стоит. */
 function StateGlow({ zone, state }: { zone: Zone; state: StationState }) {
@@ -138,12 +138,6 @@ function FlowLink({ link, status }: { link: Link; status: LinkStatus }) {
   const lane = link.buffer ? 4.6 : 0  // у буферов стрелки идут сбоку, чтобы не перекрывать кузова
   return (
     <group position={[0, 0, z]}>
-      <mesh position={[(x0 + x1) / 2, 0.025, lane]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[len, 2]} /><meshStandardMaterial color="#e3e9ef" roughness={0.9} />
-      </mesh>
-      {[-1, 1].map((side) => <mesh key={side} position={[(x0 + x1) / 2, 0.035, lane + side * 0.95]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[len, 0.055]} /><meshBasicMaterial color="#bbc9d6" />
-      </mesh>)}
       <group ref={car} name={`transfer-${link.from.id}-${link.to.id}`} position={[x0, 0.06, lane]}>
         <CarBody position={[0, 0, 0]} rotY={0} scale={1.45}
           color={link.from.id === 'welding' || link.from.id === 'warehouse_in' ? '#a8b3c0' : PAINTED}
