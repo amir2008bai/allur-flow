@@ -136,5 +136,19 @@ def test_journal_day_record_saved_once_and_honest():
     assert r1["fact"] == sum(s["fact"] for s in r1["shifts"]) and r1["plan"] == 240
     weld = [l for l in r1["losses"] if l["station"] == "welding" and l["reason"] == "авария"]
     assert weld and weld[0]["minutes"] <= 96                       # авария 95 мин не задваивается
+    assert any("лимит 60" in n["text"] for n in r1["norms"])      # нормы ТЗ проверяются
     m = journal.month("2026-10", "2026-10-08")
-    assert len(m["days"]) == 8 and m["plan_to_date"] == 8 * 240
+    worked = [d for d in m["days"] if d["day"] <= "2026-10-08" and d["kind"] != "off"]
+    assert len(worked) == 6 and m["plan_to_date"] == 6 * 240         # сб/вс — выходные
+    assert m["plans"]["by_days"] == 240 * m["plans"]["work_days"] and m["plans"]["by_models"] == 4800
+    f = m["forecast"]
+    assert f["total_range"][0] <= f["total_mean"] <= f["total_range"][1] and f["total_mean"] > m["fact"]
+
+
+def test_month_forecast_reacts_to_maintenance_mark():
+    from app import journal
+    base = journal.month("2026-10", "2026-10-08")["forecast"]["total_mean"]
+    journal.mark(journal.Mark(day="2026-10-20", kind="maint", today="2026-10-08"))
+    with_to = journal.month("2026-10", "2026-10-08")["forecast"]["total_mean"]
+    journal.mark(journal.Mark(day="2026-10-20", kind="auto", today="2026-10-08"))
+    assert with_to < base - 20

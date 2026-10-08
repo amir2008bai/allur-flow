@@ -286,9 +286,13 @@ def _shift(faults: tuple[str, ...], actions: tuple[str, ...], reps: int, ver: st
         ks = [kpis(r, IDEAL_LINE_CYCLE) for r in runs]
         good = np.array([r.good_out for r in runs]) / shifts
         down = np.array([sum(b - a for st in r.states for a, b, x in r.states[st] if x == "down") for r in runs]) / shifts
+        from ..journal import unplanned_by
+        days = params.horizon / (2 * params.shift_minutes)
+        worst = [max(unplanned_by([e for e in r.events if e["type"] == "stop_start"], with_reason=False).values(), default=0.0) / days for r in runs]
         return good, {"good_per_shift": float(good.mean()), "lo": float(np.percentile(good, 10)), "hi": float(np.percentile(good, 90)),
                       "oee_pct": float(np.mean([k["oee_pct"] for k in ks])), "downtime_min": float(down.mean()),
-                      "paint_defect_pct": float(np.mean([k["defect_pct"]["paint"] for k in ks]))}
+                      "paint_defect_pct": float(np.mean([k["defect_pct"]["paint"] for k in ks])),
+                      "worst_station_down_day": float(np.mean(worst))}
 
     g0, normal = stats(base_p)
     if faults or actions or ev:
@@ -299,7 +303,8 @@ def _shift(faults: tuple[str, ...], actions: tuple[str, ...], reps: int, ver: st
         forecast = {**normal, "delta": 0.0, "delta_ci": [0.0, 0.0]}
     from ..stress import BY_ID
     shifts_month = MONEY_DEFAULTS["work_days_month"] * MONEY_DEFAULTS["shifts_per_day"]
-    return {"source": "sim", "reps": reps, "plan_per_shift": PLAN_PER_SHIFT, "normal": normal, "forecast": forecast,
+    from ..journal import targets
+    return {"source": "sim", "reps": reps, "plan_per_shift": PLAN_PER_SHIFT, "normal": normal, "forecast": forecast, "targets": targets(),
             "faults": [{"id": f, "name": BY_ID[f]["name"]} for f in faults],
             "actions": [{"id": a, "name": INTERVENTIONS[a]["name"], "cost_per_shift": INTERVENTIONS[a]["money"]["month"] / shifts_month,
                          "once": INTERVENTIONS[a]["money"]["once"]} for a in actions],

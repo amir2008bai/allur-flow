@@ -6,8 +6,8 @@ import MoneyInputs from './MoneyInputs'
 import { useView } from './store'
 
 interface Opt { id: string; short: string; name: string; detail: string; do?: string; money?: { month: number; once: number } }
-interface Side { good_per_shift: number; lo: number; hi: number; oee_pct: number; downtime_min: number; paint_defect_pct: number; delta?: number; delta_ci?: [number, number] }
-interface Shift { plan_per_shift: number; normal: Side; forecast: Side; actions: { id: string; cost_per_shift: number; once: number }[]; reps: number
+interface Side { good_per_shift: number; lo: number; hi: number; oee_pct: number; downtime_min: number; paint_defect_pct: number; worst_station_down_day?: number; delta?: number; delta_ci?: [number, number] }
+interface Shift { targets?: { oee_min_pct: number; defect_max_pct: number; downtime_max_min_per_day: number }; plan_per_shift: number; normal: Side; forecast: Side; actions: { id: string; cost_per_shift: number; once: number }[]; reps: number
   twin?: { learned: boolean; paint_defect_p: number; observations: number; version: string } }
 
 /** Сценарий двойника: cfg:<сбои>|<действия>. Старые имена переводим в новый вид. */
@@ -135,6 +135,27 @@ export default function ShiftBuilder() {
           ) : <div className="mt-2 text-sm text-slate-400">считаю…</div>}
         </div>
       </div>
+
+      {/* нормы ТЗ: брак, простой оборудования, OEE — для текущих настроек */}
+      {data?.targets && (fc ?? normal) && (() => {
+        const side = (touched ? fc : normal)!
+        const tg = data.targets!
+        const pills = [
+          { label: 'Брак окраски', value: `${side.paint_defect_pct.toFixed(1).replace('.', ',')}%`, norm: `норма ≤ ${tg.defect_max_pct}%`, bad: side.paint_defect_pct > tg.defect_max_pct, warn: false },
+          { label: 'Простой худшего участка', value: `${int(side.worst_station_down_day ?? 0)} мин/сутки`, norm: `лимит ${tg.downtime_max_min_per_day}`, bad: (side.worst_station_down_day ?? 0) > tg.downtime_max_min_per_day * 1.1, warn: (side.worst_station_down_day ?? 0) > tg.downtime_max_min_per_day * 0.9 },
+          { label: 'OEE линии', value: `${int(side.oee_pct)}%`, norm: `цель ≥ ${tg.oee_min_pct}%`, bad: side.oee_pct < tg.oee_min_pct - 3, warn: side.oee_pct < tg.oee_min_pct },
+        ]
+        return (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-slate-500">Нормы ТЗ{touched ? ' (прогноз)' : ''}:</span>
+            {pills.map((p) => (
+              <span key={p.label} className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs ring-1 ${p.bad ? 'bg-red-50 text-red-700 ring-red-200' : p.warn ? 'bg-amber-50 text-amber-800 ring-amber-200' : 'bg-emerald-50 text-emerald-800 ring-emerald-200'}`}>
+                {p.label} <b className="tabular-nums">{p.value}</b><span className="opacity-70">· {p.norm}</span>
+              </span>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* настройки симуляции */}
       <div className="mt-4 space-y-2.5">

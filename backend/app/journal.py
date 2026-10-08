@@ -1,8 +1,14 @@
-"""Журнал смен: что было в каждый день — план, факт по сменам, утренний прогноз против факта, что съело машины.
+"""Журнал смен и прогноз месяца.
 
-Запись дня делается один раз и хранится в SQLite (таблица journal): так журнал — это история, а не пересчёт.
-Сейчас дни — симуляция (у каждой даты своя смена, метка «симуляция»). С реальными данными запись дня
-будет строиться из выгрузки MES/учёта (выпуск, простои, брак) — формат записи тот же.
+Журнал: что было в каждый рабочий день — план, факт по сменам, утренний прогноз против факта, что съело машины,
+нарушения норм ТЗ (брак ≤ 2%, простой оборудования ≤ 60 мин/сутки, OEE ≥ 85%). Запись дня делается один раз
+и хранится в SQLite (таблица journal) — это история, а не пересчёт.
+
+Прогноз месяца: факт с 1-го числа + будущие рабочие дни (двойник: 240 типичных дней — штатные, с авариями,
+с засором фильтра; дни ТО — отдельно). Выходные по умолчанию сб/вс; любой будущий день можно отметить
+«рабочий / выходной / ТО 4 ч» (таблица calendar_marks).
+
+Сейчас дни — симуляция (метка «симуляция»). С реальными данными запись дня строится из выгрузки MES, формат тот же.
 """
 from __future__ import annotations
 
@@ -11,30 +17,57 @@ import json
 import time
 from collections import defaultdict
 from datetime import date as Date
+from datetime import timedelta
+from functools import lru_cache
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from .db import connect
 from .sim.params import STATION_RU
 
 router = APIRouter(prefix="/api/journal")
 PLAN_SHIFT = 120
+PLAN_DAY = 2 * PLAN_SHIFT
 SHIFT = 480
+MAINT_MIN = 240           # ТО: линия стоит 4 часа в начале дня (плановая остановка)
 _con = None
-SCHEMA = """CREATE TABLE IF NOT EXISTS journal (day TEXT PRIMARY KEY, record TEXT NOT NULL, saved_at REAL NOT NULL, source TEXT NOT NULL)"""
+SCHEMA = """CREATE TABLE IF NOT EXISTS journal (day TEXT PRIMARY KEY, record TEXT NOT NULL, saved_at REAL NOT NULL, source TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS calendar_marks (day TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('work','off','maint')), saved_at REAL NOT NULL);"""
 
 
 def con():
     global _con
     if _con is None:
         _con = connect()
-        _con.execute(SCHEMA)
+        _con.executescript(SCHEMA)
     return _con
 
 
 def seed_from_date(d: Date) -> int:
     """Как во фронтенде (dates.ts): у каждой даты своя смена симуляции."""
     return ((d.year * 372 + (d.month - 1) * 31 + d.day) % 997) + 1
+
+
+def targets() -> dict:
+    """Нормы из ТЗ (факт): OEE, брак, простой критического оборудования, план месяца."""
+    from .dataset import active_facts
+    t = active_facts().targets
+    return {"oee_min_pct": t.oee_min_pct, "defect_max_pct": t.defect_max_pct,
+            "downtime_max_min_per_day": t.critical_downtime_max_min_per_day, "monthly_output_min": t.monthly_output_min}
+
+
+def models_plan() -> int:
+    from .dataset import active_facts
+    return sum(m.monthly_plan for m in active_facts().model_plan)
+
+
+def day_kind(d: Date) -> str:
+    """work / off / maint: отметка в календаре, иначе пн–пт рабочие, сб–вс выходные (допущение)."""
+    row = con().execute("SELECT kind FROM calendar_marks WHERE day=?", (d.isoformat(),)).fetchone()
+    if row:
+        return row[0]
+    return "work" if d.weekday() < 5 else "off"
 
 
 def day_scenario(d: Date) -> str:
@@ -51,6 +84,29 @@ def day_scenario(d: Date) -> str:
     if not faults and not events:
         return "base"
     return f"cfg:{','.join(faults)}|" + (f"|{';'.join(events)}" if events else "")
+
+
+def unplanned_by(stops: list[dict], with_reason: bool = True) -> dict:
+    """Минуты внеплановых остановок по участку (и причине). Перекрытия объединяем: у сварки два робота — одна авария пишется дважды."""
+    spans = defaultdict(list)
+    for s in stops:
+        if s.get("planned"):
+            continue
+        reason = s.get("reason") or "отказ"
+        key = (s["station"], "авария" if "что-если" in reason else reason) if with_reason else s["station"]
+        spans[key].append((s["t"], s["t"] + s["minutes"]))
+    out = {}
+    for key, iv in spans.items():
+        tot, cur = 0.0, None
+        for a, b in sorted(iv):
+            if cur and a <= cur[1]:
+                cur = (cur[0], max(cur[1], b))
+            else:
+                if cur:
+                    tot += cur[1] - cur[0]
+                cur = (a, b)
+        out[key] = tot + (cur[1] - cur[0] if cur else 0)
+    return out
 
 
 def _build(d: Date) -> dict:
@@ -70,30 +126,27 @@ def _build(d: Date) -> dict:
         shifts.append({"shift": i + 1, "plan": PLAN_SHIFT, "fact": fact,
                        "forecast": {"mean": float(fc.mean()), "lo": lo, "hi": hi, "p_plan": float((fc >= PLAN_SHIFT).mean())},
                        "in_corridor": lo <= fact <= hi})
-    # что съело машины: внеплановые остановки по участкам и причинам
-    # интервалы остановок по участку и причине; перекрытия объединяем (у сварки два робота — одна авария пишется дважды)
-    spans = defaultdict(list)
-    for s in run["stops"]:
-        if not s.get("planned"):
-            reason = s.get("reason") or "отказ"
-            spans[(s["station"], "авария" if "что-если" in reason else reason)].append((s["t"], s["t"] + s["minutes"]))
-    by = {}
-    for key, iv in spans.items():
-        tot, cur = 0.0, None
-        for a, b in sorted(iv):
-            if cur and a <= cur[1]:
-                cur = (cur[0], max(cur[1], b))
-            else:
-                if cur:
-                    tot += cur[1] - cur[0]
-                cur = (a, b)
-        by[key] = tot + (cur[1] - cur[0] if cur else 0)
+    by = unplanned_by(run["stops"])
+    per_station = unplanned_by(run["stops"], with_reason=False)
     losses = [{"station": st, "name": STATION_RU.get(st, st), "reason": r, "minutes": round(m)} for (st, r), m in sorted(by.items(), key=lambda x: -x[1])]
     fact = sum(s["fact"] for s in shifts)
     k = run["kpi"]
-    return {"day": d.isoformat(), "seed": seed, "scenario": scenario, "conditions": scenario_name(scenario) if scenario != "base" else "штатная смена", "source": "sim", "plan": 2 * PLAN_SHIFT, "fact": fact, "pct": 100 * fact / (2 * PLAN_SHIFT),
+    tg = targets()
+    defect = round(k["defect_pct"]["paint"], 1)
+    oee = round(k["oee_pct"])
+    norms = []
+    if defect > tg["defect_max_pct"]:
+        norms.append({"kind": "defect", "text": f"брак окраски {str(defect).replace('.', ',')}% — выше нормы {tg['defect_max_pct']:g}%"})
+    for st, m in sorted(per_station.items(), key=lambda x: -x[1]):
+        if m > tg["downtime_max_min_per_day"]:
+            norms.append({"kind": "downtime", "text": f"{STATION_RU.get(st, st)} простаивала {round(m)} мин — лимит {tg['downtime_max_min_per_day']} мин/сутки"})
+    if oee < tg["oee_min_pct"]:
+        norms.append({"kind": "oee", "text": f"OEE {oee}% — ниже цели {tg['oee_min_pct']:g}%"})
+    return {"day": d.isoformat(), "seed": seed, "scenario": scenario, "source": "sim",
+            "conditions": scenario_name(scenario) if scenario != "base" else "штатная смена",
+            "plan": PLAN_DAY, "fact": fact, "pct": 100 * fact / PLAN_DAY,
             "shifts": shifts, "losses": losses[:5], "downtime_min": round(sum(by.values())),
-            "paint_defect_pct": round(k["defect_pct"]["paint"], 1), "oee_pct": round(k["oee_pct"])}
+            "paint_defect_pct": defect, "oee_pct": oee, "norms": norms}
 
 
 def record(d: Date) -> dict:
@@ -108,30 +161,100 @@ def record(d: Date) -> dict:
     return {**rec, "saved_at": now}
 
 
+# ── Прогноз будущих дней ─────────────────────────────────────────────────────────────────────
+@lru_cache(maxsize=4)
+def _day_dist(ver: str):
+    """Выпуск за день: 240 типичных дней (те же правила условий, что у журнала) и 60 дней с ТО 4 ч."""
+    import numpy as np
+    from .sim.api import _scenario, twin_overlay
+    from .sim.engine import simulate
+    from .sim.params import STATIONS, ForcedDown
+    typical = []
+    for i in range(240):
+        d = Date(2000, 1, 1) + timedelta(days=i)
+        typical.append(simulate(twin_overlay(_scenario(day_scenario(d))), 50_000 + i).good_out)
+    base = twin_overlay(_scenario("base"))
+    maint_p = base.with_(forced_downs=tuple(ForcedDown(s, 0.0, float(MAINT_MIN), planned=True, reason="плановое ТО") for s in STATIONS))
+    maint = [simulate(maint_p, 60_000 + i).good_out for i in range(60)]
+    return np.array(typical, dtype=float), np.array(maint, dtype=float)
+
+
+def _month_days(y: int, m: int):
+    return [Date(y, m, dd) for dd in range(1, calendar.monthrange(y, m)[1] + 1)]
+
+
 @router.get("/month")
 def month(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"), today: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$")) -> dict:
-    """Месяц: записи прошедших дней (по сегодня включительно) и итог «с начала месяца»."""
+    """Месяц: записи прошедших рабочих дней (по сегодня включительно), выходные/ТО и прогноз до конца месяца."""
+    import numpy as np
+    from .sim.api import twin_context
     y, m = map(int, month.split("-"))
     td = Date.fromisoformat(today)
-    n = calendar.monthrange(y, m)[1]
-    days = []
-    for dd in range(1, n + 1):
-        d = Date(y, m, dd)
-        if d > td:
-            break
-        r = record(d)
-        days.append({"day": r["day"], "fact": r["fact"], "plan": r["plan"], "pct": r["pct"], "scenario": r.get("scenario", "base"),
-                     "hits": sum(s["in_corridor"] for s in r["shifts"]), "today": d == td})
-    fact = sum(x["fact"] for x in days)
-    plan_to_date = sum(x["plan"] for x in days)
-    return {"month": month, "days_in_month": n, "first_weekday": Date(y, m, 1).weekday(), "days": days, "source": "sim",
-            "fact": fact, "plan_to_date": plan_to_date, "plan_month": 5500, "plan_month_source": "fact",
-            "corridor_hits": sum(x["hits"] for x in days), "shifts_total": 2 * len(days)}
+    days, future = [], []
+    for d in _month_days(y, m):
+        kind = day_kind(d)
+        if d <= td:
+            if kind == "off":
+                days.append({"day": d.isoformat(), "kind": "off"})
+                continue
+            r = record(d)
+            days.append({"day": r["day"], "kind": kind, "fact": r["fact"], "plan": r["plan"], "pct": r["pct"], "scenario": r.get("scenario", "base"),
+                         "hits": sum(s["in_corridor"] for s in r["shifts"]), "norms": len(r.get("norms", [])), "today": d == td})
+        else:
+            future.append((d, kind))
+    past = [x for x in days if x["kind"] != "off"]
+    fact = sum(x["fact"] for x in past)
+    plan_to_date = PLAN_DAY * len(past)
+    typical, maint = _day_dist(twin_context()["version"])
+    rng = np.random.default_rng(7)
+    sims = np.full(4000, float(fact))
+    fdays = []
+    for d, kind in future:
+        if kind == "off":
+            fdays.append({"day": d.isoformat(), "kind": "off"})
+            continue
+        dist = maint if kind == "maint" else typical
+        sims += rng.choice(dist, size=sims.size)
+        fdays.append({"day": d.isoformat(), "kind": kind, "forecast": float(dist.mean()), "lo": float(np.percentile(dist, 10)), "hi": float(np.percentile(dist, 90))})
+    tg = targets()
+    work_days = len(past) + sum(1 for x in fdays if x["kind"] != "off")
+    remaining_days = sum(1 for x in fdays if x["kind"] != "off")
+    plan_month = tg["monthly_output_min"]
+    return {"month": month, "days_in_month": calendar.monthrange(y, m)[1], "first_weekday": Date(y, m, 1).weekday(), "source": "sim",
+            "days": days + fdays, "fact": fact, "plan_to_date": plan_to_date,
+            "corridor_hits": sum(x["hits"] for x in past), "shifts_total": 2 * len(past),
+            "forecast": {"total_mean": float(sims.mean()), "total_range": [float(np.percentile(sims, 10)), float(np.percentile(sims, 90))],
+                         "p_plan": float((sims >= plan_month).mean()), "remaining_days": remaining_days, "source": "forecast"},
+            "plans": {"month": plan_month, "by_days": PLAN_DAY * work_days, "by_models": models_plan(), "work_days": work_days,
+                      "need_per_day": ((plan_month - fact) / remaining_days) if remaining_days else None, "daily": PLAN_DAY}}
 
 
 @router.get("/day")
 def day(date: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$")) -> dict:
     try:
-        return record(Date.fromisoformat(date))
+        d = Date.fromisoformat(date)
     except ValueError as e:
         raise HTTPException(422, str(e))
+    if day_kind(d) == "off":
+        return {"day": d.isoformat(), "kind": "off"}
+    return {**record(d), "kind": day_kind(d)}
+
+
+class Mark(BaseModel):
+    day: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    kind: str = Field(pattern=r"^(work|off|maint|auto)$")
+    today: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+@router.post("/mark")
+def mark(body: Mark) -> dict:
+    """Отметить будущий день: рабочий / выходной / ТО 4 ч / по умолчанию. Прошедшие дни — история, их не меняем."""
+    d, td = Date.fromisoformat(body.day), Date.fromisoformat(body.today)
+    if d <= td:
+        raise HTTPException(422, "Прошедшие дни — история: отметить можно только будущий день")
+    if body.kind == "auto":
+        con().execute("DELETE FROM calendar_marks WHERE day=?", (body.day,))
+    else:
+        con().execute("INSERT OR REPLACE INTO calendar_marks VALUES (?,?,?)", (body.day, body.kind, time.time()))
+    con().commit()
+    return {"ok": True, "day": body.day, "kind": day_kind(d)}
