@@ -3,6 +3,7 @@ import type { AreaId, Facts, Finding, Severity } from './types'
 import { Card, SEVERITY, SourceBadge, fmt } from './ui'
 import DataSource from './DataSource'
 import LivePanel from './LivePanel'
+import KpiBoard, { factTiles } from './KpiBoard'
 
 const SEV_RANK: Record<Severity, number> = { critical: 0, warn: 1, info: 2, ok: 3 }
 
@@ -149,6 +150,7 @@ export default function FactsPage({ facts, findings }: { facts: Facts; findings:
       <DataSource />
       <LivePanel />
       <Route facts={facts} findings={findings} selected={area} onSelect={setArea} />
+      <KpiBoard title="Показатели ТЗ по данным Allur" tiles={factTiles(facts)} note="Одна строка таблицы — смена (допущение). Лимит простоя — на единицу оборудования за сутки, плановое ТО не входит. OEE по этим данным не вычисляется: нет идеального времени цикла." />
 
       {problems.length > 0 && (
         <div>

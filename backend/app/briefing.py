@@ -62,7 +62,18 @@ def _yesterday(td: Date) -> dict | None:
     return None
 
 
-def _risks(fc: dict, spc: dict, month: dict, yest: dict | None, value: dict, capa_items: list[dict]) -> list[dict]:
+def _outlook() -> dict:
+    """Прогноз простоев и узкого места на день: 20 прогонов обычного дня (отказы — по надёжности участков)."""
+    from .sim.api import STATION_RU, shift
+    n = shift("", "", 20, "")["normal"]
+    bn = max(n["bottleneck_share"], key=n["bottleneck_share"].get)
+    dn = max(n["down_by_station_day"], key=n["down_by_station_day"].get)
+    return {"bottleneck": bn, "bottleneck_name": STATION_RU[bn], "bottleneck_share": n["bottleneck_share"][bn],
+            "down_station": dn, "down_name": STATION_RU[dn], "down_min": n["down_by_station_day"][dn],
+            "p_down_over_limit": n["p_down_over_limit"], "reps": 20, "source": "forecast"}
+
+
+def _risks(fc: dict, spc: dict, month: dict, yest: dict | None, value: dict, capa_items: list[dict], outlook: dict | None = None) -> list[dict]:
     """Риски дня простым языком: уровень (high/medium/low), короткий текст, подробности (detail) и куда смотреть."""
     out = []
     pc = lambda x: f"{100 * x:.1f}".replace(".", ",")  # noqa: E731
@@ -72,6 +83,10 @@ def _risks(fc: dict, spc: dict, month: dict, yest: dict | None, value: dict, cap
         out.append({"level": "high" if s1["p_plan"] < 0.5 else "medium",
                     "text": f"Смена 08–16 может не дотянуть до плана — шанс {round(100 * s1['p_plan'])}%",
                     "where": "shift-builder", "source": "forecast"})
+    if outlook and outlook["p_down_over_limit"] >= 0.3:
+        out.append({"level": "high" if outlook["p_down_over_limit"] >= 0.6 else "medium",
+                    "text": f"Шанс {round(100 * outlook['p_down_over_limit'])}%, что простой участка превысит лимит 60 мин за сутки — чаще всего {outlook['down_name'].lower()}",
+                    "where": "station-value", "source": "forecast"})
     v = spc["verdict"]
     if v["kind"] == "special":
         out.append({"level": "high", "text": "Брак окраски резко вырос — в процессе что-то сломалось, разберитесь сегодня",
@@ -110,10 +125,12 @@ def briefing(today: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$")) -> dict:
     yest = _yesterday(td)
     value = station_value(12)
     caps = capa.list_actions(today)["actions"]
+    outlook = _outlook()
     stations = sorted(value["stations"], key=lambda r: -r["loss_per_min"])
     return {
         "date": today, "weekday": WD[td.weekday()], "kind": kind,
         "forecast": fc,
+        "outlook": outlook,
         "action": _best_action(),
         "repair_order": [{"station": r["station"], "name": r["name"], "loss_per_min": r["loss_per_min"], "loss_per_hour": r["loss_per_hour"],
                           "limits_output": r["limits_output"]} for r in stations],
@@ -128,6 +145,6 @@ def briefing(today: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$")) -> dict:
                   "source": "forecast"},
         "capa": [{"action": a["action"], "start_day": a["start_day"], "verdict": a["check"]["verdict"], "title": a["check"]["title"], "demo": a["check"].get("demo", False)}
                  for a in caps[:3]],
-        "risks": _risks(fc, chart, month, yest, value, caps),
+        "risks": _risks(fc, chart, month, yest, value, caps, outlook),
         "note": "Утренний прогноз не знает о событиях дня: поломки и сбои появятся в прогнозе «к концу смены» по ходу смены.",
     }

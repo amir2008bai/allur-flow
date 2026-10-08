@@ -297,16 +297,23 @@ def _shift(faults: tuple[str, ...], actions: tuple[str, ...], reps: int, ver: st
         ks = [kpis(r, IDEAL_LINE_CYCLE) for r in runs]
         good = np.array([r.good_out for r in runs]) / shifts
         down = np.array([sum(b - a for st in r.states for a, b, x in r.states[st] if x == "down") for r in runs]) / shifts
-        from ..journal import unplanned_by
+        from ..journal import targets, unplanned_by
         days = params.horizon / (2 * params.shift_minutes)
-        worst = [max(unplanned_by([e for e in r.events if e["type"] == "stop_start"], with_reason=False).values(), default=0.0) / days for r in runs]
+        per_run = [unplanned_by([e for e in r.events if e["type"] == "stop_start"], with_reason=False) for r in runs]
+        worst = [max(d.values(), default=0.0) / days for d in per_run]
+        # прогноз простоев и узкого места: по 20 прогонам того же дня (отказы — по надёжности участков)
+        tops = [bottleneck(r)["top"] for r in runs]
+        limit = targets()["downtime_max_min_per_day"]
         return good, {"good_per_shift": float(good.mean()), "lo": float(np.percentile(good, 10)), "hi": float(np.percentile(good, 90)),
                       "oee_pct": float(np.mean([k["oee_pct"] for k in ks])), "downtime_min": float(down.mean()),
                       "oee_parts": {x: float(np.mean([k["oee_parts"][x] for k in ks])) for x in ("availability", "performance", "quality")},
                       "paint_defect_pct": float(np.mean([k["defect_pct"]["paint"] for k in ks])),
                       # брак всех участков: норма ТЗ 2% касается каждого, не только окраски
                       "defect_pct": {st: float(np.mean([k["defect_pct"][st] for k in ks])) for st in ("welding", "paint", "assembly")},
-                      "worst_station_down_day": float(np.mean(worst))}
+                      "worst_station_down_day": float(np.mean(worst)),
+                      "bottleneck_share": {st: tops.count(st) / len(tops) for st in set(tops)},
+                      "down_by_station_day": {st: float(np.mean([d.get(st, 0.0) for d in per_run])) / days for st in ("welding", "paint", "assembly")},
+                      "p_down_over_limit": float(np.mean([w > limit for w in worst]))}
 
     g0, normal = stats(base_p)
     if faults or actions or ev:

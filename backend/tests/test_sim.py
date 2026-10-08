@@ -319,3 +319,28 @@ def test_briefing_collects_day_on_one_page():
     assert any(r["where"] == "paint-spc" for r in b["risks"])
     lv = [r["level"] for r in b["risks"]]
     assert lv == sorted(lv, key={"high": 0, "medium": 1, "low": 2}.get)
+
+
+def test_shift_forecasts_downtime_and_bottleneck():
+    # ТЗ: прогноз потенциальных простоев и узких мест — доля прогонов, где участок узкое место; простой по участкам; шанс превысить лимит
+    from app.sim.api import shift
+    n = shift("", "", 6, "")["normal"]
+    assert abs(sum(n["bottleneck_share"].values()) - 1) < 1e-9
+    assert set(n["down_by_station_day"]) == {"welding", "paint", "assembly"} and 0 <= n["p_down_over_limit"] <= 1
+
+
+def test_business_effect_summary():
+    # ТЗ: оценка эффекта для бизнеса — машины, простой, OEE для лучших действий и для брака окраски до нормы
+    from app.effect import effect
+    e = effect()
+    act = next(l for l in e["levers"] if l["cost"])
+    assert act["confirmed"] and act["delta_per_shift"] > 0
+    assert act["downtime_per_shift"]["after"] < act["downtime_per_shift"]["before"]   # наладчик у линии сокращает простой
+    paint = next(l for l in e["levers"] if not l["cost"])
+    assert paint["paint_defect"]["after"] < paint["paint_defect"]["before"]
+
+
+def test_briefing_has_downtime_and_bottleneck_outlook():
+    from app.briefing import briefing
+    o = briefing("2026-10-08")["outlook"]
+    assert o["bottleneck"] in ("welding", "paint", "assembly", "qc") and 0 <= o["p_down_over_limit"] <= 1

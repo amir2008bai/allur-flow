@@ -9,6 +9,8 @@ import { useView } from './store'
 const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString('ru-RU')
 
 /** «Что сделать, чтобы выполнить план»: разрыв до плана → полезные действия → лучшая пара. */
+const BN_RU: Record<string, string> = { welding: 'сварка', paint: 'окраска', assembly: 'сборка', qc: 'ОТК' }
+
 export default function Actions({ whatif, onFutures }: { whatif: WhatIf | null; onFutures: (id: string) => void }) {
   const [more, setMore] = useState(false)
   const ask = useView((v) => v.ask)
@@ -73,6 +75,8 @@ export default function Actions({ whatif, onFutures }: { whatif: WhatIf | null; 
                 <span className="text-sm text-slate-500">машин за смену</span>
               </div>
               <div className="mt-1 text-xs text-slate-500">точно в пределах {n1(o.ci95[0])}…{n1(o.ci95[1])}{o.closes_gap ? ' · план выполнен' : ''}</div>
+              {o.money && <div className="mt-0.5 text-xs text-slate-500">≈ {tenge(effect(o.delta_per_shift, o.money, money, gap).netMonth)} в месяц с учётом затрат</div>}
+              {o.bottleneck_after && <div className="mt-0.5 text-xs text-violet-700">узкое место после: {BN_RU[o.bottleneck_after] ?? o.bottleneck_after}{o.bottleneck_after !== whatif.baseline.bottleneck ? ` — сместится с участка «${BN_RU[whatif.baseline.bottleneck] ?? whatif.baseline.bottleneck}»` : ' — не изменится'}</div>}
               <div className="mt-3 flex-1 space-y-2.5 text-sm">
                 <div><div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400"><Factory size={12} />На заводе</div><div className="text-slate-700">{o.do || o.detail}</div></div>
                 {o.changes && o.changes.length > 0 && (

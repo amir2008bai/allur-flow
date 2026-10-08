@@ -9,6 +9,7 @@ type Src = 'fact' | 'sim' | 'forecast' | 'calc'
 interface ShiftF { shift: number; hours: string; plan: number; mean: number; lo: number; hi: number; p_plan: number }
 interface Briefing {
   date: string; kind: 'work' | 'off' | 'maint'; note: string
+  outlook?: { bottleneck_name: string; bottleneck_share: number; down_name: string; down_min: number; p_down_over_limit: number }
   forecast: { shifts: ShiftF[]; day: { plan: number; mean: number; lo: number; hi: number; p_plan: number }; reps: number }
   action: { names: string[]; delta: number; closes_gap: boolean; money: { month: number; once: number } | null }
   repair_order: { station: string; name: string; loss_per_min: number }[]
@@ -101,7 +102,15 @@ export default function BriefingPage() {
             </span>
           ))}
         </div>
-        <p className="mt-2 text-[11px] text-slate-400" title={b.note}>Утренний прогноз: внезапные поломки дня в нём не учтены.</p>
+        {b.outlook && (
+          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full bg-violet-50 px-2.5 py-1 text-violet-800 ring-1 ring-violet-100">узкое место: <b>{b.outlook.bottleneck_name.toLowerCase()}</b> (в {chance(b.outlook.bottleneck_share)} прогонов)</span>
+            <span className={`rounded-full px-2.5 py-1 ring-1 ${b.outlook.p_down_over_limit >= 0.3 ? 'bg-amber-50 text-amber-900 ring-amber-100' : 'bg-slate-50 text-slate-600 ring-slate-100'}`}>
+              простой: {b.outlook.down_name.toLowerCase()} ≈ {Math.round(b.outlook.down_min)} мин · шанс &gt; 60 мин — <b>{chance(b.outlook.p_down_over_limit)}</b>
+            </span>
+          </div>
+        )}
+        <p className="mt-2 text-[11px] text-slate-400" title={b.note}>Утренний прогноз двойника по 20–30 прогонам дня: поломки случаются с той частотой, что у участков обычно; какие именно случатся сегодня — заранее не известно.</p>
       </Card>
 
       {/* 2. Что мешает */}

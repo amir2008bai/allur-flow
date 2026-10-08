@@ -12,6 +12,8 @@ import MonthJournal from './twin/MonthJournal'
 import PaintSpc from './twin/PaintSpc'
 import StationValue from './twin/StationValue'
 import LossCascade from './twin/LossCascade'
+import KpiBoard, { runTiles } from './KpiBoard'
+import BusinessEffect from './twin/BusinessEffect'
 import Capa8D from './twin/Capa8D'
 import { ZONES } from './twin/layout'
 import Timeline from './twin/Timeline'
@@ -155,6 +157,8 @@ export default function TwinPage() {
         </>
       )}
 
+      {run && <TwinKpi run={run} />}
+
       <div id="shift-builder" className="scroll-mt-20">{offline ? <NeedServer what="«Смена: план и прогноз» пересчитывается на сервере под выбранные сбои и действия." /> : <ShiftBuilder />}</div>
 
       <div id="journal" className="scroll-mt-20">{offline ? <NeedServer what="Журнал смен хранится на сервере." /> : <MonthJournal />}</div>
@@ -167,6 +171,8 @@ export default function TwinPage() {
         <>
 
           <div id="actions" className="scroll-mt-20"><Actions whatif={whatif} onFutures={(id) => { setFutures(id); document.getElementById('twin-viewer')?.scrollIntoView({ behavior: 'smooth' }) }} /></div>
+
+          <div id="effect" className="scroll-mt-20">{offline ? <NeedServer what="Эффект для завода считается двойником на сервере." /> : <BusinessEffect />}</div>
 
           <div id="station-value" className="scroll-mt-20">{offline ? <NeedServer what="Цена простоя считается двойником на сервере." /> : <StationValue />}</div>
 
@@ -209,4 +215,16 @@ export default function TwinPage() {
       )}
     </div>
   )
+}
+
+
+/** Показатели ТЗ по текущему прогону двойника; нормы — из данных завода. */
+function TwinKpi({ run }: { run: SimRun }) {
+  const [tg, setTg] = useState<{ oee_min_pct: number; defect_max_pct: number; downtime_max_min_per_day: number } | null>(null)
+  useEffect(() => {
+    fetch('/api/facts').then((r) => (r.ok ? r.json() : null)).then((f) => f && setTg({ oee_min_pct: f.targets.oee_min_pct, defect_max_pct: f.targets.defect_max_pct, downtime_max_min_per_day: f.targets.critical_downtime_max_min_per_day }))
+      .catch(() => setTg({ oee_min_pct: 85, defect_max_pct: 2, downtime_max_min_per_day: 60 }))
+  }, [])
+  if (!tg) return null
+  return <div id="kpi" className="scroll-mt-20"><KpiBoard title="Показатели ТЗ — этот день в двойнике" tiles={runTiles(run, tg)} note="Симуляция двух смен выбранного дня. Загрузка — как в таблице Allur: доля времени без простоя. Простой — по участку (у сварки два робота считаются вместе). OEE — при идеальном цикле 3,4 мин (допущение A7)." /></div>
 }
