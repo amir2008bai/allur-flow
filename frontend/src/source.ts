@@ -36,6 +36,13 @@ export interface SimMeta {
   assumptions: { id: string; text: string; source: string }[]
 }
 
+/** OEE = доступность × темп × качество и потери в машинах (каскад потерь). */
+export interface OeeParts {
+  availability: number; performance: number; quality: number; planned_min: number; availability_loss_min: number
+  cars: { ideal: number; availability: number; performance: number; quality: number; good: number }
+  cars_by?: { availability: Record<string, number>; quality: Record<string, number>; planned_min: number }
+}
+
 export interface SimRun {
   source: 'sim'; scenario: string; scenario_name?: string; seed: number; horizon: number; buffer_cap: Record<string, number>
   kpi: {
@@ -43,6 +50,7 @@ export interface SimRun {
     defect_pct: Record<string, number>; downtime_min: Record<string, number>
     unplanned_downtime_min_per_day: Record<string, number>
     state_shares: Record<string, { working: number; starved: number; blocked: number; down: number }>
+    oee_parts?: OeeParts
   }
   bottleneck: { sole: Record<string, number>; shifting: Record<string, number>; top: string; timeline: { t: number; station: string | null }[] }
   stops: { t: number; station: string; minutes: number; planned: boolean; reason: string }[]

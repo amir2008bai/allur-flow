@@ -262,3 +262,47 @@ def test_downtime_cost_finds_constraint_by_extra_hour():
     assert all(r["loss_per_hour"] > 0 for r in rows.values())
     assert v["constraint"] == "assembly" and rows["assembly"]["gain_ci"][0] > 0
     assert rows["assembly"]["loss_per_min"] == max(r["loss_per_min"] for r in rows.values())
+
+
+def test_capa_effect_check_is_strict_and_honest(monkeypatch):
+    # проверка эффекта: ждём минимум дней; аномальный день не входит в базу «до»; явное снижение — подтверждено
+    from datetime import date, timedelta
+    from app import capa, spc
+    level = {"before": 0.05, "after": 0.02}
+    start = date(2026, 10, 12)
+
+    def fake_point(d):
+        if d.weekday() >= 5:
+            return None
+        p = level["before"] if d < start else level["after"]
+        if d == start - timedelta(days=3):
+            p = 0.15                                            # особая причина прямо перед действием
+        return {"day": d.isoformat(), "n": 240, "defects": round(240 * p), "source": "fact"}
+    monkeypatch.setattr(spc, "_day_point", fake_point)
+    w = capa.evaluate(start, start + timedelta(days=3))
+    assert w["verdict"] == "wait"
+    ok = capa.evaluate(start, start + timedelta(days=14))
+    assert ok["verdict"] == "confirmed" and ok["p_value"] < capa.ALPHA
+    assert (start - timedelta(days=3)).isoformat() in ok["before"]["excluded_days"]
+    level["after"] = 0.05                                       # брак не изменился → не подтверждён, хотя был аномальный день
+    no = capa.evaluate(start, start + timedelta(days=14))
+    assert no["verdict"] == "not_confirmed" and not no.get("demo")
+
+
+def test_capa_actions_are_stored():
+    from app import capa
+    r = capa.add_action(capa.NewAction(start_day="2026-10-01", action="Замена фильтров по графику", cause="Оборудование", today="2026-10-08"))
+    items = capa.list_actions("2026-10-08")["actions"]
+    it = next(i for i in items if i["id"] == r["id"])
+    assert it["check"]["verdict"] in ("wait", "confirmed", "not_confirmed") and it["check"].get("demo")   # дни после — двойник
+    capa.delete_action(r["id"])
+    assert all(i["id"] != r["id"] for i in capa.list_actions("2026-10-08")["actions"])
+
+
+def test_loss_cascade_by_station_sums_to_totals():
+    run = simulate(SCENARIOS["conveyor_break"], 7)
+    p = kpis(run, 3.4)["oee_parts"]
+    by = p["cars_by"]
+    assert abs(sum(by["availability"].values()) - p["cars"]["availability"]) < 1e-6
+    assert abs(sum(by["quality"].values()) - p["cars"]["quality"]) < 1e-6
+    assert max(by["availability"], key=by["availability"].get) == "assembly"     # обрыв цепи — поломка сборки

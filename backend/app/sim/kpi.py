@@ -109,12 +109,17 @@ def oee_parts(run: RunResult, ideal_line_cycle: float, step: float = 0.25) -> di
     n = int(np.ceil(run.horizon / step))
     stops = [e for e in run.events if e["type"] == "stop_start"]
     planned = _mask([(e["t"], e["t"] + e["minutes"]) for e in stops if e.get("planned")], n, step)
+    down = {st: _mask([(a, b) for a, b, x in run.states[st] if x == "down"], n, step) for st in STATIONS}
     down_any = np.zeros(n, dtype=bool)
-    for st in STATIONS:
-        down_any |= _mask([(a, b) for a, b, x in run.states[st] if x == "down"], n, step)
+    for m in down.values():
+        down_any |= m
     idle = ~_mask([(a, b) for a, b, x in run.states[EXIT] if x == "working"], n, step)
     planned_min = float((idle & planned).sum() * step)
-    avail_loss = float((idle & ~planned & down_any).sum() * step)
+    lost = idle & ~planned & down_any
+    avail_loss = float(lost.sum() * step)
+    # чья поломка: минута потери делится поровну между участками, которые в неё стояли
+    k = np.maximum(sum(m.astype(int) for m in down.values()), 1)
+    avail_by = {st: float(((lost & down[st]) / k).sum() * step) for st in STATIONS}
     loading = max(run.horizon - planned_min, 1e-9)
     good = run.good_out
     oee = good * ideal_line_cycle / loading
@@ -124,7 +129,15 @@ def oee_parts(run: RunResult, ideal_line_cycle: float, step: float = 0.25) -> di
     q = float(np.prod([1 - run.defects[st] / run.produced[st] for st in STATIONS if run.produced[st]]))
     perf = oee / (a * q) if a * q else 0.0
     ideal_cars = loading / ideal_line_cycle
+    # качество по участкам: доля каждого участка в общей потере (по −ln(1−доля брака), чтобы сумма сходилась)
+    ql = {st: -np.log(1 - run.defects[st] / run.produced[st]) for st in STATIONS if run.produced[st] and run.defects[st] < run.produced[st]}
+    ql_tot = sum(ql.values()) or 1.0
+    q_cars = ideal_cars * a * perf * (1 - q)
+    a_cars = ideal_cars * (1 - a)
     return {"oee": oee, "availability": a, "performance": perf, "quality": q,
+            "cars_by": {"availability": {st: a_cars * m / avail_loss for st, m in avail_by.items() if avail_loss and m > 0},
+                        "quality": {st: float(q_cars * v / ql_tot) for st, v in ql.items() if v > 0},
+                        "planned_min": planned_min},
             "planned_min": planned_min, "loading_min": loading, "availability_loss_min": avail_loss,
             # в машинах: сколько не сделано из-за каждой потери (для каскада потерь) — каскад сходится к факту
             "cars": {"ideal": ideal_cars, "availability": ideal_cars * (1 - a), "performance": ideal_cars * a * (1 - perf),
@@ -155,6 +168,6 @@ def kpis(run: RunResult, ideal_line_cycle: float) -> dict:
         "state_shares": shares,
         "oee_pct": 100 * oee,
         "oee_parts": {k: (100 * parts[k] if k in ("availability", "performance", "quality") else parts[k]) for k in
-                      ("availability", "performance", "quality", "planned_min", "availability_loss_min", "cars")},
+                      ("availability", "performance", "quality", "planned_min", "availability_loss_min", "cars", "cars_by")},
         "oee_note": f"допущение: идеальный цикл линии {ideal_line_cycle} мин; плановые остановки в OEE не входят",
     }

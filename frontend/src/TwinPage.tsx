@@ -11,6 +11,8 @@ import EtaPanel from './twin/EtaPanel'
 import MonthJournal from './twin/MonthJournal'
 import PaintSpc from './twin/PaintSpc'
 import StationValue from './twin/StationValue'
+import LossCascade from './twin/LossCascade'
+import Capa8D from './twin/Capa8D'
 import { ZONES } from './twin/layout'
 import Timeline from './twin/Timeline'
 import ZonePanel from './twin/ZonePanel'
@@ -149,12 +151,16 @@ export default function TwinPage() {
 
       <div id="paint-spc" className="scroll-mt-20">{offline ? <NeedServer what="Контрольная карта брака строится на сервере по журналу дней." /> : <PaintSpc />}</div>
 
+      <div id="capa" className="scroll-mt-20">{offline ? <NeedServer what="Разбор брака и проверка эффекта действий хранятся на сервере." /> : <Capa8D />}</div>
+
       {run && (
         <>
 
           <Actions whatif={whatif} onFutures={(id) => { setFutures(id); document.getElementById('twin-viewer')?.scrollIntoView({ behavior: 'smooth' }) }} />
 
           <div id="station-value" className="scroll-mt-20">{offline ? <NeedServer what="Цена простоя считается двойником на сервере." /> : <StationValue />}</div>
+
+          <LossCascade run={run} />
 
           <Dashboard run={run} />
 

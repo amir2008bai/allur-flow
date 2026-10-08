@@ -21,6 +21,7 @@ from .journal import router as journal_router
 from .trust import router as trust_router
 from .live import router as live_router
 from .spc import router as spc_router
+from .capa import router as capa_router
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "raw" / "test_data.docx"
 
@@ -35,6 +36,7 @@ app.include_router(journal_router)
 app.include_router(trust_router)
 app.include_router(live_router)
 app.include_router(spc_router)
+app.include_router(capa_router)
 
 WARMUP = {"done": False, "steps": [], "seconds": None}
 
