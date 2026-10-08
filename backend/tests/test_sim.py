@@ -166,3 +166,57 @@ def test_line_is_described_by_config_file():
     for s in cfg["stations"]:
         assert BASE.stations[s["id"]].cycle == s["cycle"] and BASE.stations[s["id"]].mtbf_work == s["mtbf_work"]
     assert all(BASE.buffer_cap[b["id"]] == b["cap"] for b in cfg["buffers"])
+
+
+def test_journal_days_with_factory_data_use_facts_not_invented_events():
+    # Н1: 01.10 и 02.10 есть в данных завода — журнал берёт оттуда простои, брак и выпуск смены, а не выдумывает условия
+    from datetime import date
+    from app import journal
+    r1 = journal.record(date(2026, 10, 1))
+    assert r1["facts"]["source"] == "fact" and "ABB-01" in r1["conditions"] and "Камера-02" in r1["conditions"]
+    assert r1["paint_defect_pct"] == 3.5                                  # брак окраски из таблицы 4, не из симуляции
+    assert r1["shifts"][0]["source"] == "fact" and r1["shifts"][0]["fact"] == 121   # выпуск Сборки-1 за 01.10
+    assert r1["shifts"][1]["source"] == "sim"
+    r2 = journal.record(date(2026, 10, 2))
+    assert {l["reason"] for l in r2["losses"]} == {"Конвейер-03: Обрыв цепи", "ABB-04: Плановое ТО"}
+    assert next(l for l in r2["losses"] if "ТО" in l["reason"])["planned"]
+    assert any("сварки 2,7%" in n["text"] for n in r2["norms"]) and any("окраски 5,2%" in n["text"] for n in r2["norms"])
+    assert r2["downtime_min"] == 55                                        # плановое ТО не входит во внеплановые простои
+    m = journal.month("2026-10", "2026-10-08")
+    assert m["corridor_fact"]["shifts"] == 2                               # сверка с фактом — отдельно от самопроверки
+    assert next(d for d in m["days"] if d["day"] == "2026-10-01")["has_facts"]
+    # двойник проигрывает день с реальными событиями; брак дня — факт, обучение его не переписывает
+    from app.sim.api import run_payload, scenario_name
+    run = run_payload(r2["scenario"], 7)
+    reasons = [s["reason"] for s in run["stops"]]
+    assert any("Конвейер-03" in x for x in reasons) and any("ABB-04" in x for x in reasons)
+    assert scenario_name("day:2026-10-02") == "День 02.10 по данным завода"
+
+
+def test_oee_is_availability_times_performance_times_quality():
+    # Н5: OEE раскладывается на три части, произведение точно равно OEE; поломка бьёт по доступности
+    base = simulate(SCENARIOS["base"], 7)
+    brk = simulate(SCENARIOS["conveyor_break"], 7)
+    for run in (base, brk):
+        k = kpis(run, 3.4)
+        p = k["oee_parts"]
+        assert abs(p["availability"] * p["performance"] * p["quality"] / 1e4 - k["oee_pct"]) < 1e-6
+        c = p["cars"]
+        assert abs(c["ideal"] - c["availability"] - c["performance"] - c["quality"] - c["good"]) < 1e-6   # каскад сходится к факту
+    assert kpis(brk, 3.4)["oee_parts"]["availability"] < kpis(base, 3.4)["oee_parts"]["availability"]
+    assert kpis(brk, 3.4)["oee_parts"]["availability_loss_min"] >= 50
+
+
+def test_month_forecast_accounts_for_parameter_uncertainty():
+    # Н4: неточность параметров двойника (2 дня данных) расширяет коридор месяца
+    import numpy as np
+    from app import journal
+    from app.sim.api import twin_context
+    unc = journal.param_uncertainty()
+    assert unc["paint_produced"] == 231 and all(s == journal.SIGMA_MAX for s in unc["sigma"].values())
+    typical, _ = journal._day_dist(twin_context()["version"])
+    assert typical.shape == (journal.PARAM_SETS, journal.DAYS_PER_SET)
+    between = np.var(typical.mean(axis=1))      # разброс между «возможными заводами» есть — неточность учтена
+    assert between > 0
+    f = journal.month("2026-10", "2026-10-08")["forecast"]
+    assert f["param_uncertainty"]["sets"] == journal.PARAM_SETS

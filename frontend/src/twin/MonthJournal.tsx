@@ -5,16 +5,19 @@ import { Card, SourceBadge } from '../ui'
 import { useView } from './store'
 
 type Kind = 'work' | 'off' | 'maint'
-interface DayCell { day: string; kind: Kind; fact?: number; plan?: number; pct?: number; hits?: number; norms?: number; today?: boolean; forecast?: number; lo?: number; hi?: number }
+interface DayCell { day: string; kind: Kind; fact?: number; plan?: number; pct?: number; hits?: number; norms?: number; today?: boolean; forecast?: number; lo?: number; hi?: number; has_facts?: boolean }
 interface Month {
   month: string; days_in_month: number; first_weekday: number; days: DayCell[]; fact: number; plan_to_date: number; corridor_hits: number; shifts_total: number
-  forecast: { total_mean: number; total_range: [number, number]; p_plan: number; remaining_days: number }
+  corridor_fact?: { hits: number; shifts: number }
+  forecast: { total_mean: number; total_range: [number, number]; p_plan: number; remaining_days: number; param_uncertainty?: { sets: number; data_days: number } }
   plans: { month: number; by_days: number; by_models: number; work_days: number; need_per_day: number | null; daily: number }
 }
-interface ShiftRec { shift: number; plan: number; fact: number; forecast: { mean: number; lo: number; hi: number; p_plan: number }; in_corridor: boolean }
+interface ShiftRec { shift: number; plan: number; fact: number; source?: 'fact' | 'sim'; twin?: number; forecast: { mean: number; lo: number; hi: number; p_plan: number }; in_corridor: boolean }
+interface FactsRec { lines: { line: string; plan: number; fact: number }[]; quality: { station: string; name: string; produced: number; defects: number; pct: number }[]; time_note: string }
 interface DayRec {
   day: string; kind: Kind; scenario?: string; conditions?: string; plan?: number; fact?: number; pct?: number; shifts?: ShiftRec[]
-  losses?: { station: string; name: string; reason: string; minutes: number }[]; downtime_min?: number; paint_defect_pct?: number; oee_pct?: number
+  facts?: FactsRec | null
+  losses?: { station: string; name: string; reason: string; minutes: number; planned?: boolean }[]; downtime_min?: number; paint_defect_pct?: number; oee_pct?: number; oee_parts?: { availability: number; performance: number; quality: number }
   norms?: { kind: string; text: string }[]; saved_at?: number; in_progress?: boolean; future?: boolean
 }
 
@@ -125,10 +128,11 @@ export default function MonthJournal() {
                 </button>
               )
               return (
-                <button key={iso} onClick={() => { setFuture(null); setDate(iso) }} title={`${int(d.fact ?? 0)} из ${d.plan} · ${Math.round(d.pct ?? 0)}%`}
+                <button key={iso} onClick={() => { setFuture(null); setDate(iso) }} title={`${int(d.fact ?? 0)} из ${d.plan} · ${Math.round(d.pct ?? 0)}%${d.has_facts ? ' · есть данные завода' : ''}`}
                   className={`${base} ${dayTone(d.pct ?? 0)}${ring}`}>
                   <span className="relative font-semibold leading-none">{n}{(d.norms ?? 0) > 0 && <span className="absolute -right-1.5 -top-1 h-1.5 w-1.5 rounded-full bg-red-500" />}</span>
-                  <span className="mt-0.5 text-[10px] tabular-nums leading-none opacity-80">{Math.round(d.pct ?? 0)}%</span>
+                  {d.has_facts && <span className="mt-0.5 text-[8px] font-semibold uppercase leading-none tracking-wide opacity-70">факт</span>}
+                  {!d.has_facts && <span className="mt-0.5 text-[10px] tabular-nums leading-none opacity-80">{Math.round(d.pct ?? 0)}%</span>}
                 </button>
               )
             })}
@@ -138,6 +142,7 @@ export default function MonthJournal() {
             <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" />90–99%</span>
             <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500" />меньше 90% · точка — нарушена норма</span>
             <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded border border-dashed border-slate-300" />прогноз</span>
+            <span className="flex items-center gap-1"><b className="text-[9px] font-semibold uppercase">факт</b>— есть данные завода</span>
           </div>
         </div>
 
@@ -152,7 +157,7 @@ export default function MonthJournal() {
             </div>
             <div className="mt-1 flex flex-wrap items-baseline gap-x-3">
               <span className="text-3xl font-semibold tabular-nums">≈ {int(fc.total_mean)}</span>
-              <span className="text-sm tabular-nums text-slate-500">обычно {int(fc.total_range[0])}–{int(fc.total_range[1])}</span>
+              <span className="text-sm tabular-nums text-slate-500" title={fc.param_uncertainty ? `коридор учитывает и случайность дней, и неточность параметров двойника: ${fc.param_uncertainty.sets} правдоподобных вариантов завода` : undefined}>обычно {int(fc.total_range[0])}–{int(fc.total_range[1])}</span>
             </div>
             <div className="mt-1 text-xs tabular-nums text-slate-500">
               сделано {int(m.fact)} из {int(m.plan_to_date)} ({Math.round(pctToDate)}%) · осталось {fc.remaining_days} раб. дн.
@@ -162,7 +167,11 @@ export default function MonthJournal() {
               <AlertTriangle size={13} className="mt-0.5 shrink-0" />
               <span>План в ТЗ не сходится: «не менее {int(m.plans.month)}» · по дневному плану {m.plans.daily} × {m.plans.work_days} раб. дн. = {int(m.plans.by_days)} · по моделям {int(m.plans.by_models)}. Это несогласованность плана, а не недовыпуск.</span>
             </div>
-            <div className="mt-1.5 text-[11px] text-slate-400">Утренний прогноз смены попадал в коридор в {m.corridor_hits} из {m.shifts_total} смен · будущие дни — 240 типичных дней двойника (штатные, с авариями, с засором фильтра)</div>
+            {m.corridor_fact && m.corridor_fact.shifts > 0 && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-600"><SourceBadge source="fact" />Сверка с данными завода: утренний прогноз попал в коридор в <b className="tabular-nums">{m.corridor_fact.hits} из {m.corridor_fact.shifts}</b> смен</div>
+            )}
+            {fc.param_uncertainty && <div className="mt-1.5 text-[11px] text-slate-500">Коридор широкий честно: двойник знает завод по {fc.param_uncertainty.data_days} дн. данных, поэтому учтены {fc.param_uncertainty.sets} правдоподобных вариантов его параметров (брак, частота и длительность поломок). Больше данных — уже коридор.</div>}
+            <div className="mt-1.5 text-[11px] text-slate-400">Самопроверка двойника (симуляция сверяется сама с собой, это проверка расчёта, а не точности): {m.corridor_hits} из {m.shifts_total} смен в коридоре · будущие дни — 240 типичных дней двойника (штатные, с авариями, с засором фильтра)</div>
           </div>
 
           {fd && future ? (
@@ -193,15 +202,15 @@ export default function MonthJournal() {
                 <div className="font-semibold first-letter:uppercase">{longDate(rec.day)}</div>
                 <div className="flex items-center gap-1.5 text-sm"><span className={`h-2 w-2 rounded-full ${dot(rec.pct ?? 0)}`} /><b className="tabular-nums">{int(rec.fact ?? 0)}</b> из {rec.plan} · {Math.round(rec.pct ?? 0)}%</div>
               </div>
-              <div className="mt-0.5 text-xs text-slate-500">Условия: {rec.conditions}</div>
+              <div className="mt-0.5 text-xs text-slate-500">{rec.facts ? <span className="inline-flex flex-wrap items-center gap-1"><SourceBadge source="fact" />{rec.conditions}</span> : <>Условия: {rec.conditions}</>}</div>
 
               <div className="mt-3 divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
                 <div className="grid grid-cols-[64px_56px_minmax(0,1fr)_24px] gap-2 px-3 py-1.5 text-[11px] text-slate-400"><span>смена</span><span className="text-right">факт</span><span>прогноз утром</span><span /></div>
                 {rec.shifts?.map((s) => (
                   <div key={s.shift} className="grid grid-cols-[64px_56px_minmax(0,1fr)_24px] items-center gap-2 px-3 py-2 text-sm">
                     <span className="text-slate-600">{s.shift === 1 ? '08–16' : '16–24'}</span>
-                    <span className={`text-right font-semibold tabular-nums ${s.fact >= s.plan ? 'text-emerald-600' : 'text-slate-900'}`}>{int(s.fact)}</span>
-                    <span className="truncate text-xs tabular-nums text-slate-500">{int(s.forecast.mean)} ({int(s.forecast.lo)}–{int(s.forecast.hi)}) · план {s.plan}</span>
+                    <span className={`text-right font-semibold tabular-nums ${s.fact >= s.plan ? 'text-emerald-600' : 'text-slate-900'}`} title={s.source === 'fact' ? 'выпуск из данных завода' : 'симуляция двойника'}>{int(s.fact)}{rec.facts && <sup className="ml-0.5 text-[9px] font-normal text-slate-400">{s.source === 'fact' ? 'факт' : 'сим'}</sup>}</span>
+                    <span className="truncate text-xs tabular-nums text-slate-500">{int(s.forecast.mean)} ({int(s.forecast.lo)}–{int(s.forecast.hi)}) · план {s.plan}{s.twin != null && <> · двойник по событиям дня {int(s.twin)}</>}</span>
                     {s.in_corridor ? <CheckCircle2 size={15} className="text-emerald-600" aria-label="факт в коридоре прогноза" /> : <XCircle size={15} className="text-amber-500" aria-label="факт вне коридора прогноза" />}
                   </div>
                 ))}
@@ -218,16 +227,16 @@ export default function MonthJournal() {
                 <ul className="mt-1.5 space-y-1">
                   {rec.losses!.slice(0, 3).map((l) => (
                     <li key={l.station + l.reason} className="flex items-baseline justify-between gap-2 text-sm">
-                      <span className="truncate"><b className="font-medium">{l.name}</b> <span className="text-slate-500">— {l.reason}</span></span>
+                      <span className="truncate"><b className="font-medium">{l.name}</b> <span className="text-slate-500">— {l.reason}{l.planned ? ' · плановое' : ''}</span></span>
                       <span className="shrink-0 tabular-nums text-slate-600">{int(l.minutes)} мин</span>
                     </li>
                   ))}
                 </ul>
               )}
-              <div className="mt-2 text-xs text-slate-500">Брак окраски {String(rec.paint_defect_pct).replace('.', ',')}% · OEE {rec.oee_pct}%</div>
+              <div className="mt-2 text-xs text-slate-500">{rec.facts ? <>Брак (данные завода): {rec.facts.quality.map((q) => `${q.name.toLowerCase()} ${String(q.pct).replace('.', ',')}%`).join(' · ')} · OEE {rec.oee_pct}% (двойник)</> : <>Брак окраски {String(rec.paint_defect_pct).replace('.', ',')}% · OEE {rec.oee_pct}%</>}{rec.oee_parts && <> = доступность {rec.oee_parts.availability}% × темп {rec.oee_parts.performance}% × качество {rec.oee_parts.quality}%</>}</div>
 
               <button onClick={replay} className="mt-3 flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700 active:scale-[.98]"><Play size={14} />Пересмотреть день</button>
-              <p className="mt-2 text-[11px] text-slate-400">Запись сохранена {new Date((rec.saved_at ?? 0) * 1000).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}. Сейчас дни — симуляция; с данными завода сюда придут реальные смены.</p>
+              <p className="mt-2 text-[11px] text-slate-400">Запись сохранена {new Date((rec.saved_at ?? 0) * 1000).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}. {rec.facts ? <>Смена 08–16 — выпуск из данных завода (одна строка таблицы = смена, допущение), 16–24 — двойник. {rec.facts.time_note}.</> : 'Этот день — симуляция; с данными завода сюда придут реальные смены.'}</p>
             </div>
           )}
         </div>

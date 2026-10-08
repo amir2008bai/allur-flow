@@ -17,7 +17,7 @@ export interface ForecastPayload {
   events: { t: number; type: 'drift' | 'promotion' | 'freeze' | 'serve_model' | 'serve_naive' | 'serve_tsfm'; text: string }[]
   multi_seed: { seeds: number; mae_after_drift: Record<string, number>; beats_frozen: number; beats_naive: number; gain_vs_frozen: number; gain_vs_naive: number
     interval?: { target: number; coverage: number; coverage_after_drift: number; width: number }
-    dip?: { level: number; auc: number; auc_model_only: number; base_rate: number; precision: number; recall: number } }
+    dip?: { level: number; threshold?: number; warn_rate?: number; cost_miss?: number; auc: number; auc_model_only: number; base_rate: number; precision: number; recall: number } }
   global?: GlobalState
 }
 export interface GlobalVersion { version: number; trained_at: number; runs: number; rows: number; days: number; holdout_mae: number; holdout_mae_naive: number; seconds: number; promoted: boolean; verdict: string }

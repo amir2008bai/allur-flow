@@ -142,6 +142,7 @@ function ForecastBlock() {
     if (view === 'band') {
       // последние полтора дня: коридор, прогноз и факт — по моменту, НА который прогноз
       const rows = f.timeline.filter((r) => r.lo != null && r.hi != null).slice(-48)
+      const thr = f.multi_seed.dip?.threshold ?? 0.5   // порог тревоги выбран по цене ошибок (см. ниже)
       const t0 = rows[0]?.target_t, t1 = rows[rows.length - 1]?.target_t
       return {
         animation: false,
@@ -154,8 +155,10 @@ function ForecastBlock() {
           { name: 'Коридор 90%', type: 'line', stack: 'band', showSymbol: false, lineStyle: { opacity: 0 }, areaStyle: { color: 'rgba(22,163,74,0.12)' }, data: rows.map((r) => [r.target_t, (r.hi ?? 0) - (r.lo ?? 0)]), tooltip: { show: false } },
           { name: 'Прогноз', type: 'line', showSymbol: false, lineStyle: { color: '#16a34a', width: 2.5 }, data: rows.map((r) => [r.target_t, r.served]) },
           { name: 'Факт', type: 'line', showSymbol: true, symbolSize: 4, lineStyle: { color: '#0f172a', width: 1.5 }, itemStyle: { color: '#0f172a' }, data: rows.map((r) => [r.target_t, r.y]) },
-          { name: 'Риск провала', type: 'scatter', symbol: 'triangle', symbolSize: 9, itemStyle: { color: '#ef4444' }, data: rows.filter((r) => (r.dip_risk ?? 0) >= 0.5).map((r) => [r.target_t, 2]),
-            tooltip: { valueFormatter: () => 'система заранее предупредила о провале' } },
+          { name: 'Внимание: возможен провал', type: 'scatter', symbol: 'triangle', symbolSize: 8, itemStyle: { color: '#f59e0b' }, data: rows.filter((r) => (r.dip_risk ?? 0) >= thr && (r.dip_risk ?? 0) < 0.5).map((r) => [r.target_t, 2]),
+            tooltip: { valueFormatter: () => 'внимание: риск провала выше порога — проверить участок' } },
+          { name: 'Высокий риск провала', type: 'scatter', symbol: 'triangle', symbolSize: 10, itemStyle: { color: '#ef4444' }, data: rows.filter((r) => (r.dip_risk ?? 0) >= 0.5).map((r) => [r.target_t, 2]),
+            tooltip: { valueFormatter: () => 'высокий риск провала (50% и выше)' } },
         ],
       }
     }
@@ -220,6 +223,7 @@ function ForecastBlock() {
           <div className="text-sm text-slate-600">из предупреждений сбылось <b className="text-slate-900">{pct(m.dip.precision)}</b></div>
           <div className="text-sm text-slate-600">поймано провалов <b className="text-slate-900">{pct(m.dip.recall)}</b></div>
           <div className="text-sm text-slate-600">различает провал и норму <b className="text-slate-900">{pct(m.dip.auc)}</b></div>
+          {m.dip.threshold != null && <div className="w-full text-xs text-slate-600">Предупреждаем при риске от <b>{pct(m.dip.threshold)}</b>{m.dip.warn_rate != null && <> (≈ {pct(m.dip.warn_rate)} интервалов)</>}: пропущенный провал считаем в {m.dip.cost_miss ?? 3} раза дороже ложной тревоги (мастер подошёл и проверил участок). Порог выбран на 40 отдельных днях, проверка — на потоках, которых модель не видела. Риск от 50% — «высокий».</div>}
           <div className="w-full text-[11px] text-slate-400">Провал — меньше {Math.round(100 * m.dip.level)}% нормы за следующие 2 часа (бывает в {pct(m.dip.base_rate)} интервалов). Отдельная модель LightGBM смотрит, что происходит сейчас: что стоит, сколько длится поломка, полны ли накопители. Внезапную поломку, которой ещё нет, не предскажет никто — ловятся провалы от уже начавшихся проблем.</div>
         </div>
       )}

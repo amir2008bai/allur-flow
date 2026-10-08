@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Card, SourceBadge } from '../ui'
 
 interface Trust {
+  factory?: { hits: number; shifts: number; days: number }
   journal: { hits: number; shifts: number; month: string }
   interval: { coverage: number; target: number }
   model: { version: number; mae: number; mae_naive: number } | null
@@ -46,7 +47,8 @@ export default function TrustPanel() {
       <div className="mt-5 grid gap-3 lg:grid-cols-2">
         {r && <Row value={pct(r.accuracy_model)} title="Точность на реальной фабрике" source="fact"
           sub={`прогноз до смены, ${days(r.test_days)} проверки · план даёт ${pct(r.accuracy_plan)} · коридор попал в ${pct(r.interval_coverage)} при обещанных ${pct(r.interval_target)}`} />}
-        <Row value={`${t.journal.hits} из ${t.journal.shifts}`} title="Утренний прогноз смены попал в коридор" source="sim" sub={`журнал смен, ${t.journal.month} · прогноз записан утром, до факта`} />
+        {t.factory && t.factory.shifts > 0 && <Row value={`${t.factory.hits} из ${t.factory.shifts}`} title="Прогноз смены против данных Allur" source="fact"
+          sub={`утренний прогноз против выпуска из таблиц завода · данных пока ${days(t.factory.days)} — вывод предварительный`} />}
         <Row value={pct(t.interval.coverage)} title="Факт внутри коридора прогноза на 2 часа" source="forecast" sub={`обещаем ${pct(t.interval.target)} · коридор сам подстраивается`} />
         {t.model && <Row value={`−${pct(1 - t.model.mae / t.model.mae_naive)}`} title={`Ошибка LightGBM v${t.model.version} против простого прогноза`} source="forecast"
           sub={`${num(t.model.mae, 2)} против ${num(t.model.mae_naive, 2)} машин за 2 ч на потоках, которых модель не видела`} />}
@@ -57,7 +59,8 @@ export default function TrustPanel() {
           sub={`ответов «да/нет» ${t.learning.votes} · ввод брака ${t.learning.calib_inputs} · событий камеры ${t.learning.camera_events} — переживают перезапуск`} />
         <Row value={`${t.honesty.assumptions}`} title="Допущений названо явно" source="calc" sub="у каждого числа метка источника; ИИ не может выдать число, которого нет в расчёте" />
       </div>
-      {r && <p className="mt-3 text-[11px] text-slate-400">Реальные данные: {r.dataset} · <a className="underline" href={r.url} target="_blank" rel="noreferrer">открытый источник</a></p>}
+      <p className="mt-3 text-[11px] text-slate-400">Самопроверка расчёта: в журнале месяца ({t.journal.month}) утренний прогноз попал в коридор симулированной смены в {t.journal.hits} из {t.journal.shifts} — двойник сверяется сам с собой, это проверка, что расчёт не сломан, а не точность.</p>
+      {r && <p className="mt-1 text-[11px] text-slate-400">Реальные данные: {r.dataset} · <a className="underline" href={r.url} target="_blank" rel="noreferrer">открытый источник</a></p>}
     </Card>
   )
 }

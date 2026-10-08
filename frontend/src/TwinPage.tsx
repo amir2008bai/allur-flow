@@ -90,7 +90,8 @@ export default function TwinPage() {
     setFutures(null); useView.getState().setPlaying(false)
     load<SimRun>(`/api/sim/run?scenario=${encodeURIComponent(scenario)}&seed=${seed}`, `/bundles/run_${scenario}.json`).then((r) => { setRun(r.data); setMode(r.mode) })
       }, [scenario, seed])
-  const faultsOnly = toCfg(parseCfg(scenario).faults, [], parseCfg(scenario).events)
+  // день по данным завода — действия сравниваются на его реальных событиях
+  const faultsOnly = scenario.startsWith('day:') ? scenario : toCfg(parseCfg(scenario).faults, [], parseCfg(scenario).events)
   useEffect(() => {
     setWhatif(null)
     load<WhatIf>(`/api/sim/whatif?scenario=${encodeURIComponent(faultsOnly)}&reps=20`, `/bundles/whatif_${faultsOnly}.json`, 15000).then((r) => setWhatif(r.data))

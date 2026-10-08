@@ -45,6 +45,8 @@ def twin_context() -> dict:
 
 def twin_overlay(p, ctx: dict | None = None):
     """Применить знания двойника к параметрам сценария (общий BASE не меняется)."""
+    if p.fixed_defects:      # день с данными завода: брак — факт дня, обучение его не переписывает
+        return p
     ctx = ctx or twin_context()
     if not ctx["learned"]:
         return p
@@ -80,6 +82,12 @@ def parse_events(name: str) -> list[tuple[str, int, int]]:
 
 
 def _scenario(name: str):
+    from .. import fact_days
+    if name.startswith(fact_days.PREFIX):
+        d = fact_days.parse(name)
+        if d is None or not fact_days.has_facts(d):
+            raise HTTPException(404, f"Нет данных завода за {name[len(fact_days.PREFIX):]}")
+        return fact_days.params(d)
     if name.startswith("cfg:"):
         from ..stress import combine
         from .params import ForcedDown
@@ -114,6 +122,9 @@ def _clock(t: float) -> str:
 
 
 def scenario_name(name: str) -> str:
+    from .. import fact_days
+    if (d := fact_days.parse(name)) is not None:
+        return f"День {d:%d.%m} по данным завода"
     if name.startswith("cfg:"):
         from ..stress import BY_ID
         faults, actions = parse_cfg(name)
@@ -291,6 +302,7 @@ def _shift(faults: tuple[str, ...], actions: tuple[str, ...], reps: int, ver: st
         worst = [max(unplanned_by([e for e in r.events if e["type"] == "stop_start"], with_reason=False).values(), default=0.0) / days for r in runs]
         return good, {"good_per_shift": float(good.mean()), "lo": float(np.percentile(good, 10)), "hi": float(np.percentile(good, 90)),
                       "oee_pct": float(np.mean([k["oee_pct"] for k in ks])), "downtime_min": float(down.mean()),
+                      "oee_parts": {x: float(np.mean([k["oee_parts"][x] for k in ks])) for x in ("availability", "performance", "quality")},
                       "paint_defect_pct": float(np.mean([k["defect_pct"]["paint"] for k in ks])),
                       "worst_station_down_day": float(np.mean(worst))}
 
@@ -367,7 +379,9 @@ def eta(scenario: str = "base", seed: int = 7, t: float = Query(0, ge=0, le=960)
     total = done + rem
     # утренний прогноз — БЕЗ остановок «сейчас»: утром о них ещё никто не знал
     morning = scenario
-    if parse_events(scenario):
+    if scenario.startswith("day:"):      # день по данным завода: утром о его простоях ещё не знали
+        morning = "base"
+    elif parse_events(scenario):
         f, a = parse_cfg(scenario)
         morning = f"cfg:{','.join(f)}|{','.join(a)}" if (f or a) else "base"
     mc = _eta_runs(morning, twin_context()["version"]) if morning != scenario else curves

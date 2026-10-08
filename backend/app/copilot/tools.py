@@ -211,11 +211,20 @@ def get_day_report(date: str = "") -> dict:
     if r.get("in_progress") or r.get("future"):
         return {"source": "журнал смен", "день": d, "день_не_закончился": True,
                 "примечание": "Итог дня записывается после его окончания; для сегодняшней смены — get_shift_forecast"}
-    return {"source": "журнал смен (симуляция)", "день": d, "условия": r["conditions"], "план": r["plan"], "факт": r["fact"],
-            "выполнение_pct": round(r["pct"]), "смены": [{"смена": s["shift"], "факт": s["fact"], "прогноз_утром": round(s["forecast"]["mean"]),
+    fs = r.get("facts")
+    out = {"source": "журнал смен: данные завода + двойник" if fs else "журнал смен (симуляция)", "день": d, "условия": r["conditions"], "план": r["plan"], "факт": r["fact"],
+            "выполнение_pct": round(r["pct"]), "смены": [{"смена": s["shift"], "факт": s["fact"],
+                                                        "откуда_факт": "данные завода" if s.get("source") == "fact" else "симуляция двойника",
+                                                        **({"двойник_по_событиям_дня": s["twin"]} if s.get("twin") is not None else {}),
+                                                        "прогноз_утром": round(s["forecast"]["mean"]),
                                                         "коридор": [round(s["forecast"]["lo"]), round(s["forecast"]["hi"])], "в_коридоре": s["in_corridor"]} for s in r["shifts"]],
             "что_съело_машины": [f"{l['name']} — {l['reason']}: {l['minutes']} мин" for l in r["losses"][:3]],
             "нарушения_норм": [n["text"] for n in r.get("norms", [])], "брак_окраски_pct": r["paint_defect_pct"], "oee_pct": r["oee_pct"]}
+    if fs:
+        out["данные_завода"] = {"брак_по_участкам_pct": {q["name"]: q["pct"] for q in fs["quality"]},
+                                "простои": [f"{x['equipment']}: {x['reason']} {x['minutes']} мин" + (" (плановое)" if x["planned"] else "") for x in fs["downtime"]],
+                                "примечание": fs["time_note"] + "; строка таблицы = смена 1 (допущение A1), смена 2 — двойник"}
+    return out
 
 
 def get_norms() -> dict:
@@ -230,7 +239,9 @@ def get_norms() -> dict:
     return {"source": "нормы — факт ТЗ; значения — симуляция смены (20 прогонов)",
             "брак_окраски_pct": round(side["paint_defect_pct"], 1), "норма_брака_pct": tg["defect_max_pct"],
             "простой_худшего_участка_мин_в_сутки": round(side["worst_station_down_day"]), "лимит_простоя_мин_в_сутки": tg["downtime_max_min_per_day"],
-            "oee_pct": round(side["oee_pct"]), "цель_oee_pct": tg["oee_min_pct"]}
+            "oee_pct": round(side["oee_pct"]), "цель_oee_pct": tg["oee_min_pct"],
+            **({"oee_из_чего": {"доступность_pct": round(side["oee_parts"]["availability"]), "темп_pct": round(side["oee_parts"]["performance"]),
+                                "качество_с_первого_раза_pct": round(side["oee_parts"]["quality"])}} if side.get("oee_parts") else {})}
 
 
 REGISTRY = {"get_current_view": get_current_view, "get_line_status": get_line_status, "compare_actions": compare_actions, "get_paint_quality": get_paint_quality,

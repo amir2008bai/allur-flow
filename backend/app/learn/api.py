@@ -106,9 +106,11 @@ def forecast_payload() -> dict:
                      "width": float(np.mean([r["interval"]["width"] for r in runs]))},
     }
     if all("dip" in r for r in runs):
+        from .global_model import DIP_COST_MISS
         d = [r["dip"] for r in runs]
         mean = lambda k: float(np.nanmean([x[k] for x in d if x[k] is not None]))  # noqa: E731
-        show["multi_seed"]["dip"] = {"level": d[0]["level"], "auc": mean("auc"), "auc_model_only": mean("auc_model_only"),
+        show["multi_seed"]["dip"] = {"level": d[0]["level"], "threshold": d[0].get("threshold", 0.5), "warn_rate": mean("warn_rate"),
+                                     "cost_miss": DIP_COST_MISS, "auc": mean("auc"), "auc_model_only": mean("auc_model_only"),
                                      "base_rate": mean("base_rate"), "precision": mean("precision"), "recall": mean("recall")}
     return show
 

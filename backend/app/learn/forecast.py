@@ -92,6 +92,7 @@ def run_learning(seed: int = 11, n_max: int | None = None, use_tsfm: bool = True
     tsfm = _tsfm_predictions(seed) if use_tsfm else {}
     chronos = _tsfm_predictions(seed, "chronos-2") if use_tsfm else {}
     use_global = use_global and global_model.current_booster() is not None
+    dip_thr = global_model.dip_threshold() if use_global else 0.5
     alpha, resid, y_max = 1 - COVER, deque(maxlen=64), 0.0   # адаптивный конформный интервал (ACI)
     cover_hits: list[tuple[int, bool, float]] = []
     snaps: list[Snapshot] = interval_snapshots(emulate(seed))[:n_max]
@@ -219,8 +220,8 @@ def run_learning(seed: int = 11, n_max: int | None = None, use_tsfm: bool = True
         from .global_model import _auc
         yv = np.array([int(r["dip"]) for r in dips])
         pr = np.array([r["dip_risk"] for r in dips]); pm = np.array([r["dip_model"] for r in dips])
-        warn = pr >= 0.5
-        summary["dip"] = {"level": DIP_LEVEL, "auc": _auc(pr, yv), "auc_model_only": _auc(pm, yv), "base_rate": float(yv.mean()),
+        warn = pr >= dip_thr
+        summary["dip"] = {"level": DIP_LEVEL, "threshold": dip_thr, "warn_rate": float(warn.mean()), "auc": _auc(pr, yv), "auc_model_only": _auc(pm, yv), "base_rate": float(yv.mean()),
                           "precision": float(yv[warn].mean()) if warn.any() else None, "recall": float(warn[yv == 1].mean()) if yv.any() else None,
                           "n": int(len(yv))}
     after = [c for c in cover_hits if c[0] >= DRIFT_AT]

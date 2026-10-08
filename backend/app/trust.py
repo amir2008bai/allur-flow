@@ -15,6 +15,17 @@ router = APIRouter(prefix="/api")
 VALIDATION = Path(__file__).resolve().parents[2] / "data" / "validation_real.json"
 
 
+def factory_check(today: str) -> dict:
+    """Сверка утреннего прогноза с ФАКТОМ завода: все прошедшие дни, по которым есть данные."""
+    from .dataset import active_facts
+    from .journal import record
+    f = active_facts()
+    days = sorted({r.date for r in f.lines} | {r.date for r in f.downtime} | {r.date for r in f.quality})
+    shifts = [s for d in days if d.isoformat() < today for s in record(d)["shifts"] if s.get("source") == "fact"]
+    return {"hits": sum(s["in_corridor"] for s in shifts), "shifts": len(shifts), "days": len(days), "source": "fact",
+            "text": "утренний прогноз смены против выпуска из данных завода"}
+
+
 @router.get("/trust")
 def trust() -> dict:
     from .journal import month
@@ -29,8 +40,10 @@ def trust() -> dict:
     cur = next((v for v in reg["versions"] if v["version"] == reg["current"]), None)
     real = json.loads(VALIDATION.read_text(encoding="utf-8")) if VALIDATION.exists() else None
     return {
+        "factory": factory_check(today),
+        # самопроверка: журнал месяца построен тем же двойником — это проверка расчёта, а не точности
         "journal": {"hits": m["corridor_hits"], "shifts": m["shifts_total"], "month": m["month"], "source": "sim",
-                    "text": "утренний прогноз смены попал в коридор (журнал месяца)"},
+                    "text": "самопроверка двойника: утренний прогноз против симулированной смены"},
         "interval": {"coverage": ms["interval"]["coverage"], "target": ms["interval"]["target"], "source": "forecast",
                      "text": "коридор прогноза на 2 часа: доля фактов внутри (10 прогонов)"},
         "model": ({"version": cur["version"], "mae": cur["holdout_mae"], "mae_naive": cur["holdout_mae_naive"], "source": "forecast",

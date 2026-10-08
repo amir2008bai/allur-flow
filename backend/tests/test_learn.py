@@ -123,3 +123,16 @@ def test_learning_survives_server_restart():
     api.reset()
     api._alerts = None; api._calib = None
     assert api.alerts().state()["votes"] == 0 and api.calib().camera_seen == 0   # сброс тоже сохраняется
+
+
+def test_dip_threshold_is_chosen_by_error_cost():
+    # Н3: порог тревоги «провал» — по цене ошибок (пропуск ×3), а не 50%
+    import numpy as np
+    from app.learn.global_model import choose_threshold
+    rng = np.random.default_rng(0)
+    y = (rng.random(4000) < 0.15).astype(int)
+    p = np.clip(0.15 + 0.25 * (y - 0.15) + rng.normal(0, 0.1, 4000), 0, 1)   # слабая, но полезная модель
+    t = choose_threshold(p, y)
+    assert t < 0.5
+    cost = lambda th: 3 * ((p < th) & (y == 1)).sum() + ((p >= th) & (y == 0)).sum()  # noqa: E731
+    assert cost(t) <= cost(0.5)

@@ -40,6 +40,11 @@ ROUNDS = 400
 PLAN_2H = 120 / 480 * HORIZON          # норма выпуска за 2 часа
 DIP_LEVEL = 0.8                        # «провал» — меньше 80% нормы за следующие 2 часа
 DIP_PARAMS = {**PARAMS, "objective": "binary", "is_unbalance": False}
+# Порог тревоги «провал» выбирается по цене ошибок, а не «50%»: пропущенный провал (машины потеряны, никто не успел
+# вмешаться) считаем в 3 раза дороже ложной тревоги (мастер подошёл и проверил участок, ~5 мин).
+DIP_COST_MISS, DIP_COST_FALSE = 3.0, 1.0
+DIP_VALID_SEED0 = 900_000      # дни для выбора порога: не пересекаются ни с обучением, ни с отложенными потоками
+DIP_VALID_RUNS = 40
 
 _lock = threading.Lock()
 _status = {"running": False, "progress": 0.0, "stage": "", "last_error": None}
@@ -97,15 +102,42 @@ def _auc(p: np.ndarray, y: np.ndarray) -> float:
     return float((ranks[: len(pos)].sum() - len(pos) * (len(pos) + 1) / 2) / (len(pos) * len(neg)))
 
 
-def holdout_dip(booster) -> dict:
+def choose_threshold(p: np.ndarray, y: np.ndarray) -> float:
+    """Порог с наименьшей ожидаемой ценой ошибок: пропуск × 3 + ложная тревога × 1."""
+    grid = np.round(np.arange(0.05, 0.81, 0.01), 2)
+    cost = [DIP_COST_MISS * ((p < t) & (y == 1)).sum() + DIP_COST_FALSE * ((p >= t) & (y == 0)).sum() for t in grid]
+    return float(grid[int(np.argmin(cost))])
+
+
+def dip_threshold() -> float:
+    """Порог тревоги для текущей версии модели провалов. Считается один раз на 40 отдельных днях и хранится рядом с моделью."""
+    reg = registry()
+    v = next((v for v in reg["versions"] if v["version"] == reg["current"]), None)
+    if v is None:
+        return 0.5
+    path = DIR / f"dip_threshold_v{v['version']}.json"
+    if path.exists():
+        return float(json.loads(path.read_text(encoding="utf-8"))["threshold"])
+    b = dip_booster()
+    if b is None:
+        return 0.5
+    X, _, yy = build_dataset(DIP_VALID_RUNS, seed0=DIP_VALID_SEED0, with_y=True)
+    y = (yy < DIP_LEVEL * PLAN_2H).astype(int)
+    t = choose_threshold(b.predict(X), y)
+    path.write_text(json.dumps({"threshold": t, "cost_miss": DIP_COST_MISS, "cost_false": DIP_COST_FALSE,
+                                "valid_runs": DIP_VALID_RUNS, "seed0": DIP_VALID_SEED0}, ensure_ascii=False), encoding="utf-8")
+    return t
+
+
+def holdout_dip(booster, threshold: float = 0.5) -> dict:
     ps, ys = [], []
     for s in HOLDOUT:
         snaps = interval_snapshots(emulate(s))
         X, r, last_h = xy(snaps)
         ps.append(booster.predict(X)); ys.append(((r + last_h) < DIP_LEVEL * PLAN_2H).astype(int))
     p, y = np.concatenate(ps), np.concatenate(ys)
-    warn = p >= 0.5
-    return {"auc": _auc(p, y), "brier": float(np.mean((p - y) ** 2)), "base_rate": float(y.mean()),
+    warn = p >= threshold
+    return {"auc": _auc(p, y), "brier": float(np.mean((p - y) ** 2)), "base_rate": float(y.mean()), "threshold": threshold,
             "precision": float(y[warn].mean()) if warn.any() else None, "recall": float(warn[y == 1].mean()) if y.any() else None}
 
 
@@ -145,14 +177,20 @@ def train(n_runs: int = 200, progress=None) -> dict:
         progress(0.9, "обучаю модель провалов")
     dip = lgb.train(DIP_PARAMS, lgb.Dataset(X, (yy < DIP_LEVEL * PLAN_2H).astype(int), feature_name=FEATURES), num_boost_round=300)
     if progress:
+        progress(0.92, "выбираю порог тревоги по цене ошибок")
+    Xv, _, yv = build_dataset(DIP_VALID_RUNS, seed0=DIP_VALID_SEED0, with_y=True)
+    thr = choose_threshold(dip.predict(Xv), (yv < DIP_LEVEL * PLAN_2H).astype(int))
+    if progress:
         progress(0.95, "проверяю на отложенных потоках")
     score = holdout_mae(booster)
-    dip_score = holdout_dip(dip)
+    dip_score = holdout_dip(dip, thr)
     reg = registry()
     path = DIR / f"lgbm_v{ver}.txt"
     DIR.mkdir(parents=True, exist_ok=True)
     booster.save_model(str(path))
     dip.save_model(str(DIR / f"lgbm_dip_v{ver}.txt"))
+    (DIR / f"dip_threshold_v{ver}.json").write_text(json.dumps({"threshold": thr, "cost_miss": DIP_COST_MISS, "cost_false": DIP_COST_FALSE,
+                                                                "valid_runs": DIP_VALID_RUNS, "seed0": DIP_VALID_SEED0}), encoding="utf-8")
     cur = next((v for v in reg["versions"] if v["version"] == reg["current"]), None)
     promoted = cur is None or score["mae"] < (1 - PROMOTE_MARGIN) * cur["holdout_mae"]
     entry = {"version": ver, "file": path.name, "trained_at": time.time(), "runs": n_runs, "rows": int(len(y)),

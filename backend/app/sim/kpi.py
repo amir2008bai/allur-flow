@@ -87,6 +87,50 @@ def bottleneck(run: RunResult, step: float = 0.25) -> dict:
     return {"sole": sole, "shifting": shift, "top": top, "timeline": timeline}
 
 
+EXIT = "assembly"        # последний участок перед ОТК: пока он не работает, линия не выпускает машины
+
+
+def _mask(intervals, n: int, step: float) -> np.ndarray:
+    m = np.zeros(n, dtype=bool)
+    for a, b in intervals:
+        m[int(a / step):int(np.ceil(b / step))] = True
+    return m
+
+
+def oee_parts(run: RunResult, ideal_line_cycle: float, step: float = 0.25) -> dict:
+    """OEE линии = доступность × темп × качество (классическое разложение).
+
+    Время смотрим на выходе линии (сборка): каждую минуту, когда она не работает, относим к причине —
+      плановая остановка где-либо на линии → плановое время (в OEE не входит);
+      внеплановая остановка где-либо на линии → потеря доступности;
+      остальное (ждёт кузов из-за медленного участка, переделка окраски, разброс циклов) → потеря темпа.
+    Качество = доля кузовов без дефекта с первого раза (RTY по участкам). Темп — остаток, так что A × P × Q = OEE точно.
+    Причина «по одновременности» — допущение: эффект остановки, прошедшей через буфер позже, попадёт в темп."""
+    n = int(np.ceil(run.horizon / step))
+    stops = [e for e in run.events if e["type"] == "stop_start"]
+    planned = _mask([(e["t"], e["t"] + e["minutes"]) for e in stops if e.get("planned")], n, step)
+    down_any = np.zeros(n, dtype=bool)
+    for st in STATIONS:
+        down_any |= _mask([(a, b) for a, b, x in run.states[st] if x == "down"], n, step)
+    idle = ~_mask([(a, b) for a, b, x in run.states[EXIT] if x == "working"], n, step)
+    planned_min = float((idle & planned).sum() * step)
+    avail_loss = float((idle & ~planned & down_any).sum() * step)
+    loading = max(run.horizon - planned_min, 1e-9)
+    good = run.good_out
+    oee = good * ideal_line_cycle / loading
+    a = (loading - avail_loss) / loading
+    # качество = доля кузовов без дефекта с первого раза по всем участкам (RTY): переделка окраски — потеря качества,
+    # даже если кузов потом исправили (её время иначе пряталось бы в «темпе»)
+    q = float(np.prod([1 - run.defects[st] / run.produced[st] for st in STATIONS if run.produced[st]]))
+    perf = oee / (a * q) if a * q else 0.0
+    ideal_cars = loading / ideal_line_cycle
+    return {"oee": oee, "availability": a, "performance": perf, "quality": q,
+            "planned_min": planned_min, "loading_min": loading, "availability_loss_min": avail_loss,
+            # в машинах: сколько не сделано из-за каждой потери (для каскада потерь) — каскад сходится к факту
+            "cars": {"ideal": ideal_cars, "availability": ideal_cars * (1 - a), "performance": ideal_cars * a * (1 - perf),
+                     "quality": ideal_cars * a * perf * (1 - q), "good": float(good)}}
+
+
 def kpis(run: RunResult, ideal_line_cycle: float) -> dict:
     shifts = run.horizon / run.params.shift_minutes
     shares = state_shares(run)
@@ -97,7 +141,8 @@ def kpis(run: RunResult, ideal_line_cycle: float) -> dict:
             unplanned[e["station"]] += e["minutes"]
     defect_pct = {s: 100 * run.defects[s] / run.produced[s] if run.produced[s] else 0.0 for s in STATIONS}
     good = run.good_out
-    oee = good * ideal_line_cycle / run.horizon
+    parts = oee_parts(run, ideal_line_cycle)
+    oee = parts["oee"]
     return {
         "good_out": good,
         "good_per_shift": good / shifts,
@@ -109,5 +154,7 @@ def kpis(run: RunResult, ideal_line_cycle: float) -> dict:
         "unplanned_downtime_min_per_day": {s: unplanned[s] * (960 / run.horizon) for s in STATIONS},
         "state_shares": shares,
         "oee_pct": 100 * oee,
-        "oee_note": f"допущение: идеальный цикл линии {ideal_line_cycle} мин",
+        "oee_parts": {k: (100 * parts[k] if k in ("availability", "performance", "quality") else parts[k]) for k in
+                      ("availability", "performance", "quality", "planned_min", "availability_loss_min", "cars")},
+        "oee_note": f"допущение: идеальный цикл линии {ideal_line_cycle} мин; плановые остановки в OEE не входят",
     }

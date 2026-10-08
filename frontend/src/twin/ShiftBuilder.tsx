@@ -6,7 +6,7 @@ import MoneyInputs from './MoneyInputs'
 import { useView } from './store'
 
 interface Opt { id: string; short: string; name: string; detail: string; do?: string; money?: { month: number; once: number } }
-interface Side { good_per_shift: number; lo: number; hi: number; oee_pct: number; downtime_min: number; paint_defect_pct: number; worst_station_down_day?: number; delta?: number; delta_ci?: [number, number] }
+interface Side { good_per_shift: number; lo: number; hi: number; oee_pct: number; oee_parts?: { availability: number; performance: number; quality: number }; downtime_min: number; paint_defect_pct: number; worst_station_down_day?: number; delta?: number; delta_ci?: [number, number] }
 interface Shift { targets?: { oee_min_pct: number; defect_max_pct: number; downtime_max_min_per_day: number }; plan_per_shift: number; normal: Side; forecast: Side; actions: { id: string; cost_per_shift: number; once: number }[]; reps: number
   twin?: { learned: boolean; paint_defect_p: number; observations: number; version: string } }
 
@@ -53,7 +53,7 @@ export default function ShiftBuilder() {
 
   useEffect(() => { fetch('/api/sim/options').then((r) => r.json()).then(setOpts).catch(() => setOpts({ faults: [], actions: [] })) }, [])
   useEffect(() => {
-    if (!scenario.startsWith('cfg:') && scenario !== 'base') { setScenario(toCfg(faults, actions, events)); return }   // старое имя → новый вид
+    if (!scenario.startsWith('cfg:') && !scenario.startsWith('day:') && scenario !== 'base') { setScenario(toCfg(faults, actions, events)); return }   // старое имя → новый вид
     let alive = true
     setBusy(true)
     fetch(`/api/sim/shift?faults=${faults.join(',')}&actions=${actions.join(',')}&events=${encodeURIComponent(events.join(';'))}`).then((r) => r.json())
@@ -153,6 +153,18 @@ export default function ShiftBuilder() {
                 {p.label} <b className="tabular-nums">{p.value}</b><span className="opacity-70">· {p.norm}</span>
               </span>
             ))}
+            {side.oee_parts && (() => {
+              // OEE = доступность × темп × качество: видно, какая часть тянет вниз
+              const op = side.oee_parts
+              const parts = [{ k: 'доступность', v: op.availability, hint: 'линия не стоит из-за поломок' }, { k: 'темп', v: op.performance, hint: 'работает без ожиданий и замедлений' }, { k: 'качество', v: op.quality, hint: 'кузова без переделки с первого раза' }]
+              const worst = parts.reduce((a, b) => (b.v < a.v ? b : a))
+              return (
+                <span className="text-xs text-slate-500" title="OEE = доступность × темп × качество. Плановые остановки (ТО) в OEE не входят.">
+                  OEE = {parts.map((p, i) => <span key={p.k} title={p.hint}>{i > 0 && ' × '}{p.k} <b className={`tabular-nums ${p === worst && p.v < 95 ? 'text-red-600' : 'text-slate-700'}`}>{int(p.v)}%</b></span>)}
+                  {worst.v < 95 && <> · больше всего теряем на <b className="text-slate-700">{worst.k === 'доступность' ? 'поломках' : worst.k === 'темп' ? 'темпе' : 'качестве (переделка)'}</b></>}
+                </span>
+              )
+            })()}
           </div>
         )
       })()}
