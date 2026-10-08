@@ -57,7 +57,7 @@ export default function TrustPanel() {
         {r && <Row value={num(r.dip_auc, 2)} title="Провалы выпуска различаются" source="fact" sub="на реальной фабрике: 0,5 — угадывание, 1,0 — идеально" />}
         <Row value={`${t.learning.votes + t.learning.calib_inputs + t.learning.camera_events}`} title="Уроков сохранено в журнале обучения" source="feedback"
           sub={`ответов «да/нет» ${t.learning.votes} · ввод брака ${t.learning.calib_inputs} · событий камеры ${t.learning.camera_events} — переживают перезапуск`} />
-        <Row value={`${t.honesty.assumptions}`} title="Допущений названо явно" source="calc" sub="у каждого числа метка источника; ИИ не может выдать число, которого нет в расчёте" />
+        <Row value={`${t.honesty.assumptions}`} title="Допущений названо явно" source="calc" sub="у чисел метка источника; ИИ сверяет каждое число с расчётом и помечает неподтверждённое" />
       </div>
       <p className="mt-3 text-[11px] text-slate-400">Самопроверка расчёта: в журнале месяца ({t.journal.month}) утренний прогноз попал в коридор симулированной смены в {t.journal.hits} из {t.journal.shifts} — двойник сверяется сам с собой, это проверка, что расчёт не сломан, а не точность.</p>
       {r && <p className="mt-1 text-[11px] text-slate-400">Реальные данные: {r.dataset} · <a className="underline" href={r.url} target="_blank" rel="noreferrer">открытый источник</a></p>}

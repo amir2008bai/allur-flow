@@ -9,7 +9,8 @@ PLC линий (Siemens / Omron / ABB)      камера ЛКП        MES / у�
   шлюз (Node-RED / Kepware / скрипт) → POST /api/live/events   «Факты → Загрузить данные»
                                         POST /api/learn/camera/event
         ▼
-  Allur Flow: журнал событий (SQLite → TimescaleDB) → двойник (SimPy) → прогнозы (LightGBM) → интерфейс / ИИ-помощник
+  Allur Flow: журнал событий (SQLite → TimescaleDB) → панель «Живые данные»
+  (следующий шаг: события → состояние двойника (SimPy) → прогнозы (LightGBM) → интерфейс / ИИ-помощник)
 ```
 
 - **Оперативные события** (что работает или стоит, сколько годных) — каждую минуту через шлюз на `/api/live/events`.

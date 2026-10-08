@@ -51,5 +51,5 @@ def trust() -> dict:
         "real_data": real,
         "twin_fit": {**synthetic_check(), "source": "sim", "text": "подгонка двойника восстановила скрытые параметры «завода»"},
         "learning": {**learning_stats(), "source": "feedback", "text": "ответы людей и камеры сохранены в журнале обучения"},
-        "honesty": {"assumptions": len(ASSUMPTIONS), "text": "у каждого числа метка источника; ИИ не может выдать число, которого нет в расчёте"},
+        "honesty": {"assumptions": len(ASSUMPTIONS), "text": "у чисел метка источника; ИИ сверяет каждое число с расчётом и помечает неподтверждённое"},
     }
