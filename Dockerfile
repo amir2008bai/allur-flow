@@ -23,7 +23,7 @@ COPY backend/scripts backend/scripts
 # только данные из git: исходники кейса, модели, результаты TimesFM. Данные завода (uploads) в образ не попадают.
 COPY data/raw data/raw
 COPY data/models data/models
-COPY data/tsfm_results.json data/stack_results.json data/
+COPY data/line.json data/tsfm_results.json data/stack_results.json data/validation_real.json data/
 COPY --from=frontend /src/frontend/dist frontend/dist
 RUN useradd --create-home allur && chown -R allur /app/data
 USER allur
