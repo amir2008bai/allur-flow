@@ -50,8 +50,14 @@ def main() -> int:
     reg = global_model.registry()
     cur = next(v for v in reg["versions"] if v["version"] == reg["current"])
     ms = forecast_payload()["multi_seed"]
+    # реальная фабрика (UCI 597): пересчитываем из сырых данных при каждой проверке
+    vdir = ROOT / "validation" / "real-factory"
+    subprocess.run([sys.executable, str(vdir / "validate_garment.py")], cwd=vdir, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    rf = json.loads((vdir / "results.json").read_text(encoding="utf-8"))
     real = json.loads((ROOT / "data" / "validation_real.json").read_text(encoding="utf-8"))
     faults = [data_fault(k) for k, _, _ in DATA_FAULTS]
+    from app.trust import factory_check
+    fc = factory_check("2999-01-01")
     fit = synthetic_check()
     rows = [
         {"metric": "Ошибка прогноза выпуска на 2 ч, машин (MAE)", "ours": round(cur["holdout_mae"], 2), "baseline": round(cur["holdout_mae_naive"], 2),
@@ -60,16 +66,26 @@ def main() -> int:
          "baseline_name": "обещанное покрытие", "better": "≈ цели", "data": "10 потоков, прогноз до факта", "source": "forecast"},
         {"metric": "Риск провала выпуска: AUC", "ours": round(ms["dip"]["auc"], 3), "baseline": 0.5,
          "baseline_name": "угадывание", "better": "больше", "data": "10 потоков; порог по цене ошибок", "source": "forecast"},
-        {"metric": "Риск провала: поймано провалов (recall)", "ours": round(ms["dip"]["recall"], 3), "baseline": round(ms["dip"]["base_rate"], 3),
-         "baseline_name": "доля провалов (случайная тревога)", "better": "больше", "data": f"порог {ms['dip'].get('threshold')}", "source": "forecast"},
-        {"metric": "Точность прогноза смены на РЕАЛЬНОЙ фабрике", "ours": real["accuracy_model"], "baseline": real["accuracy_plan"],
-         "baseline_name": "план", "better": "больше", "data": f"{real['dataset']}, {real['test_days']} дн. проверки", "source": "fact"},
-        {"metric": "Коридор на реальной фабрике", "ours": real["interval_coverage"], "baseline": real["interval_target"],
-         "baseline_name": "обещанное покрытие", "better": "≈ цели", "data": real["dataset"], "source": "fact"},
+        {"metric": "Риск провала: поймано провалов (recall)", "ours": round(ms["dip"]["recall"], 3), "baseline": round(ms["dip"]["warn_rate"], 3),
+         "baseline_name": "случайная тревога с той же частотой", "better": "больше", "data": f"порог {ms['dip'].get('threshold')}; тревог {ms['dip']['warn_rate']:.0%} окон", "source": "forecast"},
+        {"metric": "Риск провала: тревога верна (precision)", "ours": round(ms["dip"]["precision"], 3), "baseline": round(ms["dip"]["base_rate"], 3),
+         "baseline_name": "случайная тревога (= доля провалов)", "better": "больше", "data": "10 потоков эмулятора", "source": "forecast"},
+        {"metric": "РЕАЛЬНАЯ фабрика: ошибка прогноза выработки, п.п. (MAE)", "ours": round(100 * rf["mae"]["lgbm"], 2), "baseline": round(100 * rf["mae"]["plan"], 2),
+         "baseline_name": "план бригады", "better": "меньше",
+         "data": f"UCI 597, {rf['test_rows']} прогнозов за {rf['test_days']} дн. проверки; 95% ДИ разницы {100 * rf['paired_bootstrap_95']['lgbm_vs_plan'][1]:.2f}…{100 * rf['paired_bootstrap_95']['lgbm_vs_plan'][2]:.2f} п.п.", "source": "fact"},
+        {"metric": "РЕАЛЬНАЯ фабрика: ошибка против «как вчера», п.п.", "ours": round(100 * rf["mae"]["lgbm"], 2), "baseline": round(100 * rf["mae"]["naive"], 2),
+         "baseline_name": "как вчера", "better": "меньше",
+         "data": f"95% ДИ разницы {100 * rf['paired_bootstrap_95']['lgbm_vs_naive'][1]:.2f}…{100 * rf['paired_bootstrap_95']['lgbm_vs_naive'][2]:.2f} п.п.", "source": "fact"},
+        {"metric": "РЕАЛЬНАЯ фабрика: покрытие коридора 90%", "ours": round(rf["interval"]["coverage"], 3), "baseline": rf["interval"]["target"],
+         "baseline_name": "обещанное покрытие", "better": "≈ цели", "data": f"{rf['interval']['n']} проверок", "source": "fact"},
+        {"metric": "РЕАЛЬНАЯ фабрика: провалы выработки (AUC)", "ours": round(rf["dip"]["auc_model"], 3), "baseline": round(rf["dip"]["auc_yesterday_dip"], 3),
+         "baseline_name": "«вчера был провал»", "better": "больше", "data": f"доля провалов {rf['dip']['base_rate']:.0%}", "source": "fact"},
         {"metric": "Сбои данных пойманы", "ours": sum(f["detected"] for f in faults), "baseline": len(faults),
          "baseline_name": "всего сбоев", "better": "= всего", "data": "6 типов искажений потока", "source": "calc"},
         {"metric": "Ложные тревоги проверки данных на чистом потоке", "ours": len(faults[0]["false_alarm_on_clean_data"]), "baseline": 0,
          "baseline_name": "ноль", "better": "= 0", "data": "чистый поток эмулятора", "source": "calc"},
+        {"metric": "Прогноз смены против данных Allur: в коридоре", "ours": f"{fc['hits']} из {fc['shifts']}", "baseline": "—",
+         "baseline_name": "данных мало — вывод предварительный", "better": "больше", "data": f"факты заказчика из ТЗ, {fc['days']} дн.", "source": "fact"},
         {"metric": "Подгонка двойника: восстановленное время ремонта, мин", "ours": round(fit["recovered_mttr"], 1), "baseline": fit["hidden_mttr"],
          "baseline_name": "скрытое истинное значение", "better": "≈ истинному", "data": "синтетический «завод» со скрытыми параметрами", "source": "sim"},
     ]
@@ -88,6 +104,15 @@ def main() -> int:
     md += ["", "Источники: fact — реальные данные, forecast — прогноз до факта на отложенных данных, sim — симуляция, calc — расчёт.",
            "Ограничения: данных заказчика 2 дня; модели прогноза учатся на эмуляторе завода; на реальной фабрике проверены на открытом наборе UCI 597."]
     (OUT / "RESULTS.md").write_text("\n".join(md), encoding="utf-8")
+    # та же таблица — в README между маркерами, чтобы цифры не расходились
+    readme = ROOT / "README.md"
+    txt = readme.read_text(encoding="utf-8")
+    b, e = "<!-- RESULTS:BEGIN -->", "<!-- RESULTS:END -->"
+    if b in txt and e in txt:
+        table = ["| Метрика | Allur Flow | База | На чём проверено |", "|---|---|---|---|"]
+        table += [f"| {x['metric']} | **{x['ours']}** | {x['baseline']} ({x['baseline_name']}) | {x['data']} |" for x in rows]
+        table += ["", f"Тесты: **{tail[0]}**. Пересобрано командой `python verify.py`."]
+        readme.write_text(txt[: txt.index(b) + len(b)] + "\n" + "\n".join(table) + "\n" + txt[txt.index(e):], encoding="utf-8")
     ok = tests_ok and r2.returncode == 0
     print("\nИТОГ:", "OK" if ok else "ЕСТЬ ОШИБКИ", "→ results/RESULTS.md")
     return 0 if ok else 1

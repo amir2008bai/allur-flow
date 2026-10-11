@@ -9,10 +9,13 @@ MAX_BYTES = 20 * 1024 * 1024
 
 
 async def _read(f: UploadFile) -> bytes:
-    data = await f.read()
-    if len(data) > MAX_BYTES:
-        raise HTTPException(413, "Файл больше 20 МБ")
-    return data
+    # читаем по 1 МБ и обрываем сразу за лимитом: большой файл не попадает в память целиком
+    buf = bytearray()
+    while chunk := await f.read(1024 * 1024):
+        buf += chunk
+        if len(buf) > MAX_BYTES:
+            raise HTTPException(413, "Файл больше 20 МБ")
+    return bytes(buf)
 
 
 @router.get("/status")

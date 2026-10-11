@@ -29,9 +29,10 @@ from .workorders import router as workorders_router
 DATA = Path(__file__).resolve().parents[2] / "data" / "raw" / "test_data.docx"
 
 app = FastAPI(title="Allur Flow API")
-app.add_middleware(GZipMiddleware, minimum_size=1024)
-from .guard import Guard  # noqa: E402
-app.add_middleware(Guard)   # PIN администратора на изменения (если задан) и лимит вопросов к ИИ   # JSON и JS сжимаются; поток SSE Starlette не сжимает
+app.add_middleware(GZipMiddleware, minimum_size=1024)   # JSON и JS сжимаются; поток SSE Starlette не сжимает
+from .guard import Guard, require_pin_on_public  # noqa: E402
+require_pin_on_public()     # публичный домен без PIN — отказ запуска
+app.add_middleware(Guard)   # PIN администратора на изменения (если задан) и лимит вопросов к ИИ
 app.include_router(sim_router)
 app.include_router(learn_router)
 app.include_router(copilot_router)

@@ -388,3 +388,21 @@ def test_admin_pin_protects_changes_but_not_jury_actions(monkeypatch):
     c2 = TestClient(app)
     codes = [c2.post("/api/copilot", json={"message": "привет", "offline": True}).status_code for _ in range(3)]
     assert 429 in codes                                                                    # лимит вопросов к ИИ
+
+
+def test_public_domain_requires_pin_and_upload_is_capped(monkeypatch):
+    import pytest
+    from fastapi.testclient import TestClient
+    from app import data_api, guard
+    from app.main import app
+    monkeypatch.setenv("ALLUR_DOMAIN", "allur.example.kz")
+    monkeypatch.delenv("ALLUR_ADMIN_PIN", raising=False)
+    monkeypatch.setattr(guard, "ENV", guard.ENV.with_name("no-such.env"))
+    with pytest.raises(RuntimeError):
+        guard.require_pin_on_public()                                                       # публичный запуск без PIN — отказ
+    monkeypatch.setenv("ALLUR_ADMIN_PIN", "4321")
+    guard.require_pin_on_public()
+    monkeypatch.delenv("ALLUR_ADMIN_PIN")
+    monkeypatch.setattr(data_api, "MAX_BYTES", 1000)
+    r = TestClient(app).post("/api/data/preview", files={"file": ("big.csv", b"x" * 5000)})
+    assert r.status_code == 413                                                             # слишком большой файл обрывается

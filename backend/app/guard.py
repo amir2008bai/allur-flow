@@ -23,15 +23,29 @@ WINDOW_S = 600
 ENV = Path(__file__).resolve().parents[2] / ".env"
 
 
+_cache: dict = {"mtime": None, "vals": {}}
+
+
 def _env(name: str, default: str = "") -> str:
     if os.environ.get(name):
         return os.environ[name]
-    if ENV.exists():
-        for line in ENV.read_text(encoding="utf-8-sig").splitlines():
-            k, _, v = line.partition("=")
-            if k.strip() == name:
-                return v.strip()
-    return default
+    # .env перечитываем только когда файл изменился
+    mtime = ENV.stat().st_mtime if ENV.exists() else None
+    if mtime != _cache["mtime"]:
+        vals = {}
+        if mtime is not None:
+            for line in ENV.read_text(encoding="utf-8-sig").splitlines():
+                k, _, v = line.partition("=")
+                vals[k.strip()] = v.strip()
+        _cache.update(mtime=mtime, vals=vals)
+    return _cache["vals"].get(name) or default
+
+
+def require_pin_on_public() -> None:
+    """Публичный деплой (ALLUR_DOMAIN не localhost) без PIN не запускаем: иначе любой сбросит обучение."""
+    domain = _env("ALLUR_DOMAIN", "localhost").lower()
+    if domain not in ("localhost", "127.0.0.1", "") and not _env("ALLUR_ADMIN_PIN"):
+        raise RuntimeError(f"ALLUR_DOMAIN={domain}: задайте ALLUR_ADMIN_PIN в .env для публичного запуска")
 
 
 class Guard(BaseHTTPMiddleware):

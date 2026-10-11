@@ -32,7 +32,7 @@ Allur Flow использует открытые библиотеки (точн�
 | Что | Для чего | Лицензия / условия |
 |---|---|---|
 | Тестовые данные кейса (DOCX) и ТЗ | факты, нормы, план | материалы организаторов хакатона |
-| UCI 597 «Productivity Prediction of Garment Employees» | проверка прогноза на реальной фабрике | CC BY 4.0 |
+| UCI 597 «Productivity Prediction of Garment Employees» | проверка прогноза на реальной фабрике | CC BY 4.0; копия CSV лежит в `validation/real-factory/data/` (Rahim, Hossain, Ahmed, Islam, UCI ML Repository, 2020) |
 | TimesFM (Google), Chronos (Amazon) | претенденты прогноза (результаты в `data/tsfm_results.json`) | Apache-2.0 |
 | Модели через OpenRouter (NVIDIA Nemotron, Qwen) | ИИ-помощник | по карточкам моделей; ключ пользователя, в репозиторий не входит |
 

@@ -138,7 +138,10 @@ def run_learning(seed: int = 11, n_max: int | None = None, use_tsfm: bool = True
         if len(resid) >= 8:
             a = min(0.5, max(0.0, alpha))
             r = np.array(resid)
-            lo_q, hi_q = float(np.quantile(r, a / 2)), float(np.quantile(r, 1 - a / 2))
+            # конечная поправка конформного метода: уровень ⌈(n+1)(1−a/2)⌉/n, иначе на 64 ошибках коридор чуть узок
+            n = len(r)
+            lo_q = float(np.quantile(r, max(0.0, np.floor((n + 1) * a / 2) / n), method="lower"))
+            hi_q = float(np.quantile(r, min(1.0, np.ceil((n + 1) * (1 - a / 2)) / n), method="higher"))
             band = (max(0.0, preds["served"] + lo_q), min(y_max + 1, preds["served"] + hi_q))
         else:
             band = None
