@@ -25,6 +25,8 @@ interface ViewState {
   setScenario: (s: string) => void
   tab: string
   setTab: (t: string) => void
+  section: TwinSection
+  setSection: (s: TwinSection) => void
   date: string
   setDate: (d: string) => void
   question: string | null
@@ -33,6 +35,16 @@ interface ViewState {
   setScreen: (p: { incidentText?: string | null; stressInfo?: string | null }) => void
   ask: (q: string) => void
   clearQuestion: () => void
+}
+
+/** Разделы вкладки «Двойник» под 3D: что сейчас / решения / качество / история. */
+export type TwinSection = 'now' | 'decide' | 'quality' | 'history'
+/** В каком разделе лежит блок (для ссылок из брифинга и кнопок). */
+export const SECTION_OF: Record<string, TwinSection> = {
+  kpi: 'now', workorders: 'now', events: 'now',
+  'shift-builder': 'decide', actions: 'decide', effect: 'decide', 'station-value': 'decide',
+  'paint-spc': 'quality', capa: 'quality', cascade: 'quality',
+  journal: 'history',
 }
 
 export const useView = create<ViewState>((set) => ({
@@ -47,6 +59,8 @@ export const useView = create<ViewState>((set) => ({
   scenario: 'base',
   setScenario: (scenario) => set({ scenario }),
   tab: 'facts',
+  section: 'now',
+  setSection: (section) => set({ section }),
   date: todayISO(),
   question: null,
   incidentText: null,

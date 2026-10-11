@@ -6,6 +6,7 @@ import { longDate, seedFromDate } from './dates'
 import { clock } from './twin/Timeline'
 import { ZONE_BY_ID } from './twin/layout'
 import type { ZoneId } from './twin/layout'
+import { t as tr, useLang } from './i18n'
 
 // Копилот: вопрос → функции двойника → короткий ответ с источниками; может сам показать участок в 3D.
 interface Reply { answer: string; model: string; mode: 'llm' | 'offline'; sources: string[]; unverified: string[]; verified?: { label: string; value: string; note: string }[]; actions: { type: string; zone: ZoneId }[]; fallback_reason?: string }
@@ -68,9 +69,10 @@ export default function Copilot() {
     } finally { setBusy(false) }
   }
 
+  useLang((v) => v.lang)   // перерисовать подпись при смене языка
   if (!open) return (
     <button onClick={() => setOpen(true)} aria-label="Спросить двойник" className="print:hidden fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 z-30 flex h-14 items-center gap-2 rounded-full bg-slate-900 px-4 text-sm sm:right-5 sm:h-auto sm:px-5 sm:py-3 font-semibold text-white shadow-xl hover:bg-slate-700">
-      <Sparkles size={19} /><span className="hidden sm:inline">Спросить двойник</span>
+      <Sparkles size={19} /><span className="hidden sm:inline">{tr('Спросить двойник')}</span>
     </button>
   )
 

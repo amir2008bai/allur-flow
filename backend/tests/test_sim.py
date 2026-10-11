@@ -344,3 +344,47 @@ def test_briefing_has_downtime_and_bottleneck_outlook():
     from app.briefing import briefing
     o = briefing("2026-10-08")["outlook"]
     assert o["bottleneck"] in ("welding", "paint", "assembly", "qc") and 0 <= o["p_down_over_limit"] <= 1
+
+
+def test_forecast_is_registered_before_the_shift():
+    # правило №8: прогноз смены пишется в базу до её начала; начавшуюся смену зарегистрировать нельзя; запись дня берёт его
+    from datetime import date, datetime
+    from app import prereg
+    d = date(2026, 11, 3)
+    before = datetime(2026, 11, 3, 7, 0, tzinfo=prereg.KZ).timestamp()
+    noon = datetime(2026, 11, 3, 12, 0, tzinfo=prereg.KZ).timestamp()
+    assert prereg.register(d, noon) == 1                     # смена 08–16 уже идёт — только 16–24
+    assert prereg.get(d, 1) is None and prereg.get(d, 2)
+    d2 = date(2026, 11, 4)
+    assert prereg.register(d2, before - 86400) == 2 and prereg.register(d2, before - 86400) == 0   # без дублей
+    from app import journal
+    journal.con().execute("DELETE FROM journal WHERE day=?", (d2.isoformat(),)); journal.con().commit()
+    r = journal.record(d2)
+    assert all(s["forecast"]["preregistered"] for s in r["shifts"])
+    st = prereg.stats()
+    assert st["registered"] >= 3 and st["settled"] >= 2
+
+
+def test_workorders_from_stops_with_priority_and_status():
+    # тревога → причина → наряд: обрыв цепи сборки (ограничитель) — высокий приоритет, кому и что сделать; статус сохраняется
+    from app.workorders import list_orders, set_status, Status
+    r = list_orders("conveyor_break", 7, 960)
+    chain = next(o for o in r["items"] if "цеп" in o["cause"].lower())
+    assert chain["priority"] == "high" and chain["role"] == "слесарь конвейера" and "цеп" in chain["todo"].lower()
+    assert chain["impact"]["cars"] > 0
+    set_status(chain["id"], Status(status="done"))
+    assert next(o for o in list_orders("conveyor_break", 7, 960)["items"] if o["id"] == chain["id"])["status"] == "done"
+
+
+def test_admin_pin_protects_changes_but_not_jury_actions(monkeypatch):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    monkeypatch.setenv("ALLUR_ADMIN_PIN", "4321")
+    c = TestClient(app)
+    assert c.post("/api/learn/reset").status_code == 403                                   # изменение без PIN — нельзя
+    assert c.post("/api/learn/reset", headers={"X-Admin-PIN": "0000"}).status_code == 403
+    assert c.post("/api/copilot", json={"message": "Что сейчас происходит?", "offline": True, "scenario": "day:2026-10-02"}).status_code == 200
+    monkeypatch.setenv("ALLUR_COPILOT_LIMIT", "1")
+    c2 = TestClient(app)
+    codes = [c2.post("/api/copilot", json={"message": "привет", "offline": True}).status_code for _ in range(3)]
+    assert 429 in codes                                                                    # лимит вопросов к ИИ

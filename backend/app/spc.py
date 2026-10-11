@@ -24,6 +24,7 @@ import json
 router = APIRouter(prefix="/api/spc")
 POINTS = 20            # подгрупп на карте (стандартно 20–25)
 LOOKBACK_DAYS = 60
+MIN_FACT_POINTS = 20       # меньше фактических дней — вывод карты помечается «по модели»
 RUN_SIDE, RUN_TREND = 9, 6
 
 
@@ -155,8 +156,16 @@ def _control_chart(today: str, area: str) -> dict:
             break
     pts.reverse()
     res = chart(pts, targets()["defect_max_pct"] / 100, area)
+    n_fact = sum(p["source"] == "fact" for p in pts)
+    if n_fact < MIN_FACT_POINTS:
+        # фактических дней мало: вывод о процессе сделан по модели двойника, а не по заводу — говорим прямо
+        v = res["verdict"]
+        v["model_based"] = True
+        v["title"] = v["title"] + " (по модели)"
+        v["text"] = (f"Данных завода — {n_fact} дн. из {len(pts)}; остальные точки — двойник. "
+                     "Это вывод о модели процесса; для вывода о заводе нужно не меньше 20 фактических дней. ") + v["text"]
     res.update({"source": "calc", "area": area, "name": AREAS[area], "checks": CHECKS[area],
-                "facts": sum(p["source"] == "fact" for p in pts),
+                "facts": n_fact, "model_based": n_fact < MIN_FACT_POINTS,
                 "note": "Точки с данными завода — факт; остальные дни — двойник. Границы — 3σ при объёме дня."})
     return res
 

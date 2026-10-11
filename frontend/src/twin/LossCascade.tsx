@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import type { SimRun } from '../source'
 import { tenge, useMoney } from '../money'
 import { Card, SourceBadge } from '../ui'
+import { t } from '../i18n'
 
 const RU: Record<string, string> = { welding: 'сварка', paint: 'окраска', assembly: 'сборка', qc: 'ОТК' }
 const n0 = (x: number) => Math.round(x).toLocaleString('ru-RU')
@@ -70,7 +71,7 @@ export default function LossCascade({ run }: { run: SimRun }) {
         <div className="flex items-center gap-2.5">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-slate-700"><TrendingDown size={18} /></span>
           <div>
-            <h2 className="text-lg font-semibold leading-tight">Куда уходят машины</h2>
+            <h2 className="text-lg font-semibold leading-tight">{t('Куда уходят машины')}</h2>
             <p className="text-sm text-slate-500">Каскад потерь за {shifts === 2 ? '2 смены' : 'смену'}: от идеальной линии до факта. OEE {Math.round(run.kpi.oee_pct)}% = доступность {Math.round(op.availability)}% × темп {Math.round(op.performance)}% × качество {Math.round(op.quality)}%.</p>
           </div>
         </div>

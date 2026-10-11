@@ -118,6 +118,9 @@ def briefing(today: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$")) -> dict:
     from . import capa, journal, spc
     from .sim.api import station_value
     td = Date.fromisoformat(today)
+    if td == Date.today():
+        from . import prereg
+        prereg.register_upcoming(td)
     kind = journal.day_kind(td)
     fc = _shift_forecast()
     chart = spc.paint(today)

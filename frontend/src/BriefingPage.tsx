@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import { longDate, todayISO } from './dates'
 import { tenge, useMoney } from './money'
 import { Card, SourceBadge } from './ui'
-import { useView } from './twin/store'
+import { SECTION_OF, useView } from './twin/store'
+import { t } from './i18n'
 
 type Src = 'fact' | 'sim' | 'forecast' | 'calc'
 interface ShiftF { shift: number; hours: string; plan: number; mean: number; lo: number; hi: number; p_plan: number }
@@ -32,7 +33,9 @@ const low1 = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
 /** Перейти на «Двойник» к нужному блоку: блоки выше грузятся и сдвигают страницу — докручиваем, пока позиция не устоится. */
 function useGo() {
   const setTab = useView((v) => v.setTab)
+  const setSection = useView((v) => v.setSection)
   return (anchor: string) => {
+    setSection(SECTION_OF[anchor] ?? 'now')
     setTab('twin')
     let n = 0, lastTop = NaN, still = 0
     const t = setInterval(() => {
@@ -80,7 +83,7 @@ export default function BriefingPage() {
     <div className="mx-auto max-w-3xl space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-1.5 text-xs text-slate-500"><Sunrise size={14} />Брифинг на 08:00</div>
+          <div className="flex items-center gap-1.5 text-xs text-slate-500"><Sunrise size={14} />{t('Брифинг на 08:00')}</div>
           <h1 className="text-xl font-semibold tracking-tight first-letter:uppercase sm:text-2xl">{longDate(b.date)}</h1>
           {b.kind !== 'work' && <div className="text-sm text-amber-700">{b.kind === 'off' ? 'По календарю выходной — ниже прогноз для рабочего дня.' : 'Сегодня ТО 4 ч.'}</div>}
         </div>
@@ -89,34 +92,34 @@ export default function BriefingPage() {
 
       {/* 1. Сколько сделаем */}
       <Card className="p-5 print:shadow-none">
-        <div className="flex items-center justify-between text-xs text-slate-500">Сегодня сделаем <SourceBadge source="forecast" /></div>
+        <div className="flex items-center justify-between text-xs text-slate-500">{t('Сегодня сделаем')} <SourceBadge source="forecast" /></div>
         <div className="mt-1 flex flex-wrap items-baseline gap-x-3">
           <span className="text-4xl font-semibold tabular-nums">≈ {int(d.mean)}</span>
-          <span className="text-slate-500">машин из {d.plan}</span>
+          <span className="text-slate-500">{t('машин из')} {d.plan}</span>
         </div>
-        <div className={`mt-0.5 font-semibold ${tone(d.p_plan)}`}>{verdict} · шанс {chance(d.p_plan)}</div>
+        <div className={`mt-0.5 font-semibold ${tone(d.p_plan)}`}>{t(verdict)} · {t('шанс')} {chance(d.p_plan)}</div>
         <div className="mt-2 flex flex-wrap gap-2 text-xs">
           {b.forecast.shifts.map((s) => (
             <span key={s.shift} className="rounded-full bg-slate-50 px-2.5 py-1 tabular-nums text-slate-600 ring-1 ring-slate-100">
-              {s.hours}: ≈ {int(s.mean)} из {s.plan} · <b className={tone(s.p_plan)}>шанс {chance(s.p_plan)}</b>
+              {s.hours}: ≈ {int(s.mean)} из {s.plan} · <b className={tone(s.p_plan)}>{t('шанс')} {chance(s.p_plan)}</b>
             </span>
           ))}
         </div>
         {b.outlook && (
           <div className="mt-2 flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full bg-violet-50 px-2.5 py-1 text-violet-800 ring-1 ring-violet-100">узкое место: <b>{b.outlook.bottleneck_name.toLowerCase()}</b> (в {chance(b.outlook.bottleneck_share)} прогонов)</span>
+            <span className="rounded-full bg-violet-50 px-2.5 py-1 text-violet-800 ring-1 ring-violet-100">{t('узкое место')}: <b>{b.outlook.bottleneck_name.toLowerCase()}</b> (в {chance(b.outlook.bottleneck_share)} прогонов)</span>
             <span className={`rounded-full px-2.5 py-1 ring-1 ${b.outlook.p_down_over_limit >= 0.3 ? 'bg-amber-50 text-amber-900 ring-amber-100' : 'bg-slate-50 text-slate-600 ring-slate-100'}`}>
               простой: {b.outlook.down_name.toLowerCase()} ≈ {Math.round(b.outlook.down_min)} мин · шанс &gt; 60 мин — <b>{chance(b.outlook.p_down_over_limit)}</b>
             </span>
           </div>
         )}
-        <p className="mt-2 text-[11px] text-slate-400" title={b.note}>Утренний прогноз двойника по 20–30 прогонам дня: поломки случаются с той частотой, что у участков обычно; какие именно случатся сегодня — заранее не известно.</p>
+        <p className="mt-2 text-[11px] text-slate-400" title={b.note}>{t('Утренний прогноз: внезапные поломки дня в нём не учтены.')}</p>
       </Card>
 
       {/* 2. Что мешает */}
       <Card className="p-5 print:shadow-none">
-        <div className="mb-2 text-sm font-semibold">Что мешает</div>
-        {b.risks.length === 0 ? <div className="text-sm text-emerald-700">Ничего серьёзного.</div> : (
+        <div className="mb-2 text-sm font-semibold">{t('Что мешает')}</div>
+        {b.risks.length === 0 ? <div className="text-sm text-emerald-700">{t('Ничего серьёзного.')}</div> : (
           <ul className="space-y-2.5">
             {risks.map((r) => (
               <li key={r.text} className="flex items-start gap-2.5 text-sm" title={r.detail}>
@@ -135,7 +138,7 @@ export default function BriefingPage() {
 
       {/* 3. Что сделать */}
       <Card className="p-5 print:shadow-none">
-        <div className="mb-2 flex items-center justify-between text-sm font-semibold">Что сделать <SourceBadge source="sim" /></div>
+        <div className="mb-2 flex items-center justify-between text-sm font-semibold">{t('Что сделать')} <SourceBadge source="sim" /></div>
         <ol className="space-y-2.5 text-sm">
           {a.names.length > 0 && (
             <li className="flex gap-2"><b className="text-slate-400">1</b><span>
@@ -159,12 +162,12 @@ export default function BriefingPage() {
       <div className="grid gap-3 sm:grid-cols-2">
         {y && (
           <Card className="p-4 print:shadow-none">
-            <div className="flex items-center justify-between text-xs text-slate-500">Вчера <SourceBadge source={y.has_facts ? 'fact' : 'sim'} /></div>
+            <div className="flex items-center justify-between text-xs text-slate-500">{t('Вчера')} <SourceBadge source={y.has_facts ? 'fact' : 'sim'} /></div>
             <div className="mt-1 text-sm"><b className="tabular-nums">{int(y.fact)}</b> из {y.plan} · {y.pct >= 100 ? <span className="text-emerald-700">план выполнен</span> : <span className="text-amber-700">не хватило {int(y.plan - y.fact)}</span>}<Go to="journal" /></div>
           </Card>
         )}
         <Card className="p-4 print:shadow-none">
-          <div className="flex items-center justify-between text-xs text-slate-500">Месяц <SourceBadge source="forecast" /></div>
+          <div className="flex items-center justify-between text-xs text-slate-500">{t('Месяц')} <SourceBadge source="forecast" /></div>
           <div className="mt-1 text-sm">сделано <b className="tabular-nums">{int(m.fact)}</b> из {int(m.plan_to_date)} · к концу ≈ {int(m.mean)}<Go to="journal" /></div>
         </Card>
       </div>

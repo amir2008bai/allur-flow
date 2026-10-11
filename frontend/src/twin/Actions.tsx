@@ -5,6 +5,7 @@ import { effect, tenge, useMoney } from '../money'
 import { Card } from '../ui'
 import { parseCfg, toCfg } from './ShiftBuilder'
 import { useView } from './store'
+import { t } from '../i18n'
 
 const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString('ru-RU')
 
@@ -32,7 +33,7 @@ export default function Actions({ whatif, onFutures }: { whatif: WhatIf | null; 
       {/* разрыв до плана */}
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Как выполнить план</h2>
+          <h2 className="text-lg font-semibold">{t('Как выполнить план')}</h2>
           <p className="text-sm text-slate-500">
             План {whatif.plan_per_shift} машин за смену · сейчас {n1(now)} ·{' '}
             {gap > 0.5 ? <b className="text-red-600">не хватает {n1(gap)}</b> : <b className="text-emerald-600">план выполняется</b>}

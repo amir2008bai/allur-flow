@@ -2,6 +2,7 @@ import { Gauge } from 'lucide-react'
 import type { SimRun } from './source'
 import type { Facts } from './types'
 import { Card, SourceBadge } from './ui'
+import { t } from './i18n'
 
 type Src = 'fact' | 'calc' | 'sim' | 'assumption'
 type Tone = 'ok' | 'warn' | 'bad' | 'none'
@@ -69,11 +70,11 @@ export function runTiles(run: SimRun, t: { oee_min_pct: number; defect_max_pct: 
 export default function KpiBoard({ title, note, tiles }: { title: string; note?: string; tiles: Tile[] }) {
   return (
     <Card className="p-5">
-      <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><Gauge size={16} className="text-slate-500" />{title}</div>
+      <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><Gauge size={16} className="text-slate-500" />{t(title)}</div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {tiles.map((x) => (
           <div key={x.key} className="rounded-2xl bg-slate-50 p-3.5 ring-1 ring-slate-100">
-            <div className="flex items-center justify-between gap-1 text-xs text-slate-500">{x.title}<SourceBadge source={x.source} /></div>
+            <div className="flex items-center justify-between gap-1 text-xs text-slate-500">{t(x.title)}<SourceBadge source={x.source} /></div>
             <div className={`mt-1 text-xl font-semibold tabular-nums ${x.tone === 'none' ? 'text-slate-900' : TONE[x.tone]}`}>{x.value}</div>
             {x.bars && (
               <div className="mt-1.5 space-y-1">

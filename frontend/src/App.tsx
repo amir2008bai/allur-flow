@@ -15,6 +15,7 @@ import { useView } from './twin/store'
 import type { Facts, Finding } from './types'
 import { NeedServer, OfflineStrip, UpdateBanner } from './NetBanners'
 import { useNet } from './net'
+import { t, useLang } from './i18n'
 
 const TABS = [
   { id: 'facts', label: 'Факты из ТЗ', short: 'Факты', ready: true },
@@ -34,6 +35,8 @@ function MainApp() {
   const [data, setData] = useState<{ facts: Facts; findings: Finding[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const tab = useView((v) => v.tab)
+  const lang = useLang((v) => v.lang)
+  const setLang = useLang((v) => v.setLang)
   const setTab = useView((v) => v.setTab)
 
   const server = useNet((s) => s.server)
@@ -59,21 +62,22 @@ function MainApp() {
           </div>
           {/* сегментированный переключатель в стиле Apple: «пилюля» плавно переезжает */}
           <nav className="mx-auto flex gap-0.5 overflow-x-auto rounded-full bg-slate-900/[0.05] p-1 [scrollbar-width:none]">
-            {TABS.map((t) => (
-              <button key={t.id} onClick={() => setTab(t.id)}
-                className={`relative shrink-0 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[13px] font-medium sm:px-4 ${tab === t.id ? 'text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}>
-                {tab === t.id && <motion.span layoutId="tab-pill" className="absolute inset-0 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.12)]" transition={{ type: 'spring', stiffness: 500, damping: 38 }} />}
-                <span className="relative">{t.short ? <><span className="sm:hidden">{t.short}</span><span className="hidden sm:inline">{t.label}</span></> : t.label}</span>
+            {TABS.map((x) => (
+              <button key={x.id} onClick={() => setTab(x.id)}
+                className={`relative shrink-0 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[13px] font-medium sm:px-4 ${tab === x.id ? 'text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}>
+                {tab === x.id && <motion.span layoutId="tab-pill" className="absolute inset-0 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.12)]" transition={{ type: 'spring', stiffness: 500, damping: 38 }} />}
+                <span className="relative">{x.short ? <><span className="sm:hidden">{t(x.short)}</span><span className="hidden sm:inline">{t(x.label)}</span></> : t(x.label)}</span>
               </button>
             ))}
           </nav>
-          <div className="hidden w-[120px] shrink-0 lg:block" />
+          <button onClick={() => { setLang(lang === 'ru' ? 'kk' : 'ru'); window.scrollTo({ top: 0 }) }} title="Тіл / Язык" aria-label="Переключить язык"
+            className="shrink-0 rounded-full bg-slate-900/[0.05] px-2.5 py-1.5 text-[12px] font-semibold text-slate-600 hover:text-slate-900">{lang === 'ru' ? 'ҚАЗ' : 'РУС'}</button>
         </div>
         <OfflineStrip />
       </header>
       <main className="mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-6">
         <AnimatePresence mode="wait">
-          <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}>
+          <motion.div key={tab + lang} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}>
             <Suspense fallback={<Wait />}>
               {tab === 'briefing' && (server === false ? <NeedServer what="Брифинг собирается на сервере из прогноза, журнала и контрольной карты." /> : <BriefingPage />)}
               {tab === 'twin' && <TwinPage />}

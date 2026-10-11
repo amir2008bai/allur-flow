@@ -4,6 +4,7 @@ import { longDate, todayISO } from '../dates'
 import { Card, SourceBadge } from '../ui'
 import { useView } from './store'
 import { journalRequest } from './journalRequest'
+import { t } from '../i18n'
 
 type Kind = 'work' | 'off' | 'maint'
 interface DayCell { day: string; kind: Kind; fact?: number; plan?: number; pct?: number; hits?: number; norms?: number; today?: boolean; forecast?: number; lo?: number; hi?: number; has_facts?: boolean }
@@ -13,9 +14,10 @@ interface Month {
   forecast: { total_mean: number; total_range: [number, number]; p_plan: number; remaining_days: number; param_uncertainty?: { sets: number; data_days: number }; learned?: boolean; typical_days?: number; maintenance_days?: number }
   plans: { month: number; by_days: number; by_models: number; work_days: number; need_per_day: number | null; daily: number }
 }
-interface ShiftRec { shift: number; plan: number; fact: number; source?: 'fact' | 'sim'; twin?: number; forecast: { mean: number; lo: number; hi: number; p_plan: number }; in_corridor: boolean }
+interface ShiftRec { shift: number; plan: number; fact: number; source?: 'fact' | 'sim'; twin?: number; forecast: { mean: number; lo: number; hi: number; p_plan: number; preregistered?: boolean; registered_at?: string | null }; in_corridor: boolean }
 interface FactsRec { lines: { line: string; plan: number; fact: number }[]; quality: { station: string; name: string; produced: number; defects: number; pct: number }[]; time_note: string }
 interface DayRec {
+  fact_mix?: { fact: number; sim: number } | null
   day: string; kind: Kind; scenario?: string; conditions?: string; plan?: number; fact?: number; pct?: number; shifts?: ShiftRec[]
   facts?: FactsRec | null
   losses?: { station: string; name: string; reason: string; minutes: number; planned?: boolean; shift?: number; why?: string }[]; downtime_min?: number; paint_defect_pct?: number; oee_pct?: number; oee_parts?: { availability: number; performance: number; quality: number }
@@ -110,7 +112,7 @@ export default function MonthJournal() {
         <div className="flex items-center gap-2.5">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-slate-700"><CalendarDays size={18} /></span>
           <div>
-            <h2 className="text-lg font-semibold leading-tight">Журнал и прогноз месяца</h2>
+            <h2 className="text-lg font-semibold leading-tight">{t('Журнал и прогноз месяца')}</h2>
             <p className="text-sm text-slate-500">Прошедшие дни — запись смен. Будущие — прогноз двойника.</p>
           </div>
         </div>
@@ -238,7 +240,7 @@ export default function MonthJournal() {
             <div>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div className="font-semibold first-letter:uppercase">{longDate(rec.day)}</div>
-                <div className="flex items-center gap-1.5 text-sm"><span className={`h-2 w-2 rounded-full ${dot(rec.pct ?? 0)}`} /><b className="tabular-nums">{int(rec.fact ?? 0)}</b> из {rec.plan} · {Math.round(rec.pct ?? 0)}%</div>
+                <div className="flex items-center gap-1.5 text-sm"><span className={`h-2 w-2 rounded-full ${dot(rec.pct ?? 0)}`} /><b className="tabular-nums">{int(rec.fact ?? 0)}</b> из {rec.plan} · {Math.round(rec.pct ?? 0)}%{rec.fact_mix && <span className="text-xs text-slate-500" title="Итог дня сложен из факта Allur (смена 08–16, выпуск сборки) и расчёта двойника (смена 16–24)"> · {int(rec.fact_mix.fact)} факт + {int(rec.fact_mix.sim)} двойник</span>}</div>
               </div>
               <div className="mt-0.5 text-xs text-slate-500">{rec.facts ? <span className="inline-flex flex-wrap items-center gap-1"><SourceBadge source="fact" />{rec.conditions}</span> : <>Условия: {rec.conditions}</>}</div>
 
@@ -248,7 +250,7 @@ export default function MonthJournal() {
                   <div key={s.shift} className="grid grid-cols-[64px_56px_minmax(0,1fr)_24px] items-center gap-2 px-3 py-2 text-sm">
                     <span className="text-slate-600">{s.shift === 1 ? '08–16' : '16–24'}</span>
                     <span className={`text-right font-semibold tabular-nums ${s.fact >= s.plan ? 'text-emerald-600' : 'text-slate-900'}`} title={s.source === 'fact' ? 'выпуск из данных завода' : 'симуляция двойника'}>{int(s.fact)}{rec.facts && <sup className="ml-0.5 text-[9px] font-normal text-slate-400">{s.source === 'fact' ? 'факт' : 'сим'}</sup>}</span>
-                    <span className="truncate text-xs tabular-nums text-slate-500">{int(s.forecast.mean)} ({int(s.forecast.lo)}–{int(s.forecast.hi)}) · план {s.plan}{s.twin != null && <> · двойник по событиям дня {int(s.twin)}</>}</span>
+                    <span className="truncate text-xs tabular-nums text-slate-500">{int(s.forecast.mean)} ({int(s.forecast.lo)}–{int(s.forecast.hi)}) · план {s.plan}{s.twin != null && <> · двойник {int(s.twin)}</>}{s.forecast.preregistered && <span className="ml-1 text-emerald-700" title="Прогноз записан в базу до начала смены">· записан {s.forecast.registered_at}</span>}</span>
                     {s.in_corridor ? <CheckCircle2 size={15} className="text-emerald-600" aria-label="факт в коридоре прогноза" /> : <XCircle size={15} className="text-amber-500" aria-label="факт вне коридора прогноза" />}
                   </div>
                 ))}

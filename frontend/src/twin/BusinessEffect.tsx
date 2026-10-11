@@ -2,6 +2,7 @@ import { TrendingUp } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { effect as money$, tenge, useMoney } from '../money'
 import { Card, SourceBadge } from '../ui'
+import { t } from '../i18n'
 
 interface Range { before: number; after: number }
 interface Lever { name: string; what: string; delta_per_shift: number; ci: [number, number]; confirmed: boolean; downtime_per_shift: Range; oee: Range; paint_defect: Range; cost: { month: number; once: number } | null }
@@ -26,7 +27,7 @@ export default function BusinessEffect() {
         <div className="flex items-center gap-2.5">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><TrendingUp size={18} /></span>
           <div>
-            <h2 className="text-lg font-semibold leading-tight">Эффект для завода</h2>
+            <h2 className="text-lg font-semibold leading-tight">{t('Эффект для завода')}</h2>
             <p className="text-sm text-slate-500">Что даст внедрение: машины, деньги, простои, OEE, брак. Сейчас: {n1(d.base.good_per_shift)} машин за смену при плане {d.base.plan_per_shift}.</p>
           </div>
         </div>

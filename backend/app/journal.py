@@ -24,7 +24,7 @@ from functools import lru_cache
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from . import fact_days
+from . import fact_days, prereg
 from .db import connect
 from .sim.params import STATION_RU
 
@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api/journal")
 PLAN_SHIFT = 120
 PLAN_DAY = 2 * PLAN_SHIFT
 SHIFT = 480
-REV = 2                   # версия правил записи дня: 2 — норма брака по всем участкам; старые записи пересобираются
+REV = 3                   # версия правил записи дня: 2 — брак по всем участкам; 3 — прогноз из записанных заранее, факт/двойник раздельно
 MAINT_MIN = 240           # ТО: линия стоит 4 часа в начале дня (плановая остановка)
 _con = None
 SCHEMA = """CREATE TABLE IF NOT EXISTS journal (day TEXT PRIMARY KEY, record TEXT NOT NULL, saved_at REAL NOT NULL, source TEXT NOT NULL);
@@ -130,9 +130,13 @@ def _build(d: Date) -> dict:
         fact = good[s1] - good[s0]
         fc = curves[:, min(s1, curves.shape[1] - 1)] - curves[:, s0]
         lo, hi = float(np.percentile(fc, 10)), float(np.percentile(fc, 90))
+        f = {"mean": float(fc.mean()), "lo": lo, "hi": hi, "p_plan": float((fc >= PLAN_SHIFT).mean())}
+        pre = prereg.get(d, i + 1)          # прогноз, записанный в базу до начала смены
+        if pre:
+            f.update({k2: pre[k2] for k2 in ("mean", "lo", "hi")})
         shifts.append({"shift": i + 1, "plan": PLAN_SHIFT, "fact": fact, "source": "sim",
-                       "forecast": {"mean": float(fc.mean()), "lo": lo, "hi": hi, "p_plan": float((fc >= PLAN_SHIFT).mean())},
-                       "in_corridor": lo <= fact <= hi})
+                       "forecast": {**f, "preregistered": bool(pre), "registered_at": pre["issued_at_local"] if pre else None},
+                       "in_corridor": f["lo"] <= fact <= f["hi"]})
     tg = targets()
     fs = fact_days.summary(d, tg)
     if fs and fs["exit_fact"] is not None:
@@ -140,6 +144,8 @@ def _build(d: Date) -> dict:
         s0 = shifts[0]
         s0.update({"twin": s0["fact"], "fact": fs["exit_fact"], "source": "fact",
                    "in_corridor": s0["forecast"]["lo"] <= fs["exit_fact"] <= s0["forecast"]["hi"]})
+    for s in shifts:
+        prereg.settle(d, s["shift"], s["fact"])
     by = unplanned_by(run["stops"])
     per_station = unplanned_by(run["stops"], with_reason=False)
     losses = [{"station": st, "name": STATION_RU.get(st, st), "reason": r, "minutes": round(m)} for (st, r), m in sorted(by.items(), key=lambda x: -x[1])]
@@ -169,6 +175,9 @@ def _build(d: Date) -> dict:
         norms.append({"kind": "oee", "source": "sim", "text": f"OEE {oee}% — ниже цели {tg['oee_min_pct']:g}% (двойник)"})
     return {"day": d.isoformat(), "seed": seed, "scenario": scenario, "source": "fact+sim" if fs else "sim",
             "facts": fs, "facts_key": fact_days.key(d), "rev": REV,
+            # день из данных завода и двойника — суммы раздельно, чтобы смешанный итог не выдавать за факт
+            "fact_mix": {"fact": sum(s["fact"] for s in shifts if s["source"] == "fact"),
+                         "sim": sum(s["fact"] for s in shifts if s["source"] != "fact")} if fs else None,
             "conditions": fact_days.describe(d) if fs else (scenario_name(scenario) if scenario != "base" else "штатная смена"),
             "plan": PLAN_DAY, "fact": fact, "pct": 100 * fact / PLAN_DAY,
             "shifts": shifts, "losses": losses[:5], "downtime_min": round(sum(by.values())),
@@ -277,6 +286,8 @@ def month(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"), today: str = Query(
     from .sim.api import twin_context
     y, m = map(int, month.split("-"))
     td = Date.fromisoformat(today)
+    if td == Date.today():
+        prereg.register_upcoming(td)       # прогноз на ещё не начавшиеся смены — в базу заранее
     days, future = [], []
     for d in _month_days(y, m):
         kind = day_kind(d)

@@ -4,6 +4,7 @@ import { tenge, useMoney } from '../money'
 import { Card, SourceBadge } from '../ui'
 import MoneyInputs from './MoneyInputs'
 import { useView } from './store'
+import { t } from '../i18n'
 
 interface Opt { id: string; short: string; name: string; detail: string; do?: string; money?: { month: number; once: number } }
 interface Side { good_per_shift: number; lo: number; hi: number; oee_pct: number; defect_pct?: Record<string, number>; oee_parts?: { availability: number; performance: number; quality: number }; downtime_min: number; paint_defect_pct: number; worst_station_down_day?: number; delta?: number; delta_ci?: [number, number] }
@@ -85,7 +86,7 @@ export default function ShiftBuilder() {
     <Card className="p-5">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold leading-tight">Смена: план и прогноз</h2>
+          <h2 className="text-lg font-semibold leading-tight">{t('Смена: план и прогноз')}</h2>
           <p className="text-sm text-slate-500">Одна смена — 8 часов. Включайте сбои и действия — прогноз машин и заработка пересчитается.</p>
         </div>
         {busy && <span className="flex items-center gap-1.5 text-xs text-slate-400"><Loader2 size={14} className="animate-spin" />считаю {data?.reps ?? 20} смен…</span>}

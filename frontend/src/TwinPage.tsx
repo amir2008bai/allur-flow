@@ -27,10 +27,12 @@ import { load, type Mode, type SimMeta, type SimRun, type WhatIf } from './sourc
 import { Card, SourceBadge } from './ui'
 
 import { BottleneckBadge, STATUS, StatusLegend } from './theme'
-import { CalendarDays, Columns2, Minus, Orbit, Plus, ShieldCheck, Square } from 'lucide-react'
+import { Activity, CalendarDays, Columns2, Gauge, Lightbulb, Minus, Orbit, Plus, ShieldCheck, Square, type LucideIcon } from 'lucide-react'
 import DatePicker from './DatePicker'
 import { seedFromDate } from './dates'
-import { isPhone } from './twin/store'
+import { isPhone, SECTION_OF, type TwinSection } from './twin/store'
+import WorkOrders from './twin/WorkOrders'
+import { t } from './i18n'
 import { useReducedMotion } from './twin/motionPreference'
 const STATE_RU: Record<string, string> = { working: 'работает', starved: 'ждёт кузов', blocked: 'некуда отдать', down: 'стоит' }
 
@@ -87,6 +89,14 @@ function ZoomButtons() {
   </div>
 }
 
+const ICON = (I: LucideIcon) => <I size={14} />
+const SECTIONS: { id: TwinSection; label: string; icon: React.ReactNode }[] = [
+  { id: 'now', label: 'Сейчас', icon: ICON(Gauge) },
+  { id: 'decide', label: 'Решения', icon: ICON(Lightbulb) },
+  { id: 'quality', label: 'Качество', icon: ICON(Activity) },
+  { id: 'history', label: 'История', icon: ICON(CalendarDays) },
+]
+
 export default function TwinPage() {
   const [meta, setMeta] = useState<SimMeta | null>(null)
   const scenario = useView((v) => v.scenario)
@@ -100,6 +110,9 @@ export default function TwinPage() {
   const [futures, setFutures] = useState<string | null>(null)
   const setView = useView((v) => v.setView)
   const offline = useNet((s) => s.server === false)
+  const section = useView((v) => v.section)
+  const setSection = useView((v) => v.setSection)
+  const goSection = (anchor: string) => { setSection(SECTION_OF[anchor] ?? 'now'); setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth' }), 80) }
 
   useEffect(() => { load<SimMeta>('/api/sim/meta', '/bundles/meta.json').then((r) => setMeta(r.data)) }, [])
   useEffect(() => {
@@ -119,14 +132,14 @@ export default function TwinPage() {
   return (
     <div className="space-y-6">
       <div id="twin-viewer" className="flex scroll-mt-20 flex-wrap items-center gap-2">
-        <h2 className="text-lg font-semibold">Как идёт смена на линии</h2>
+        <h2 className="text-lg font-semibold">{t('Как идёт смена на линии')}</h2>
         <span className="text-sm text-slate-500">{run?.scenario_name ?? ''}</span>
         <button onClick={() => { setFutures((whatif?.useful?.[0]) ?? 'fast_repair'); document.getElementById('twin-viewer')?.scrollIntoView({ behavior: 'smooth' }) }}
-          className="ml-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"><Columns2 size={16} className="mr-1.5 inline -mt-0.5" />Два будущих рядом</button>
+          className="ml-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"><Columns2 size={16} className="mr-1.5 inline -mt-0.5" />{t('Два будущих рядом')}</button>
         <span className="ml-auto flex items-center gap-3 text-xs text-slate-500">
           <DatePicker value={date} onChange={setDate} />
-          <button onClick={() => document.getElementById('journal')?.scrollIntoView({ behavior: 'smooth' })} className="flex items-center gap-1 rounded-xl bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><CalendarDays size={14} />Журнал</button>
-          <button onClick={() => { useView.getState().setTab('learning'); window.scrollTo({ top: 0 }) }} className="flex items-center gap-1 rounded-xl bg-white px-3 py-2 text-xs font-medium text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-50"><ShieldCheck size={14} />Почему верить</button>
+          <button onClick={() => goSection('journal')} className="flex items-center gap-1 rounded-xl bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><CalendarDays size={14} />{t('Журнал')}</button>
+          <button onClick={() => { useView.getState().setTab('learning'); window.scrollTo({ top: 0 }) }} className="flex items-center gap-1 rounded-xl bg-white px-3 py-2 text-xs font-medium text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-50"><ShieldCheck size={14} />{t('Почему верить')}</button>
           <SourceBadge source="sim" />{mode === 'replay' && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">офлайн-режим</span>}
         </span>
       </div>
@@ -157,32 +170,28 @@ export default function TwinPage() {
         </>
       )}
 
-      {run && <TwinKpi run={run} />}
+      {/* разделы под сценой: короткая страница вместо длинной ленты */}
+      <div className="sticky top-[52px] z-10 -mx-1 flex justify-center px-1 py-1 sm:top-[58px]">
+        <div className="flex gap-0.5 overflow-x-auto rounded-full bg-white/85 p-1 shadow-sm ring-1 ring-black/5 backdrop-blur [scrollbar-width:none]">
+          {SECTIONS.map((x) => (
+            <button key={x.id} onClick={() => setSection(x.id)}
+              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-medium transition ${section === x.id ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'}`}>
+              {x.icon}{t(x.label)}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      <div id="shift-builder" className="scroll-mt-20">{offline ? <NeedServer what="«Смена: план и прогноз» пересчитывается на сервере под выбранные сбои и действия." /> : <ShiftBuilder />}</div>
-
-      <div id="journal" className="scroll-mt-20">{offline ? <NeedServer what="Журнал смен хранится на сервере." /> : <MonthJournal />}</div>
-
-      <div id="paint-spc" className="scroll-mt-20">{offline ? <NeedServer what="Контрольная карта брака строится на сервере по журналу дней." /> : <PaintSpc />}</div>
-
-      <div id="capa" className="scroll-mt-20">{offline ? <NeedServer what="Разбор брака и проверка эффекта действий хранятся на сервере." /> : <Capa8D />}</div>
-
-      {run && (
+      {section === 'now' && run && (
         <>
-
-          <div id="actions" className="scroll-mt-20"><Actions whatif={whatif} onFutures={(id) => { setFutures(id); document.getElementById('twin-viewer')?.scrollIntoView({ behavior: 'smooth' }) }} /></div>
-
-          <div id="effect" className="scroll-mt-20">{offline ? <NeedServer what="Эффект для завода считается двойником на сервере." /> : <BusinessEffect />}</div>
-
-          <div id="station-value" className="scroll-mt-20">{offline ? <NeedServer what="Цена простоя считается двойником на сервере." /> : <StationValue />}</div>
-
-          <LossCascade run={run} />
-
-          <Dashboard run={run} />
-
+          <TwinKpi run={run} />
+          <div className="space-y-6">
+            <div id="workorders" className="scroll-mt-28">{offline ? <NeedServer what="Наряды собираются на сервере." /> : <WorkOrders seed={seed} />}</div>
+            <div id="events" className="scroll-mt-28"><Dashboard run={run} /></div>
+          </div>
           <Card className="p-5">
             <div className="mb-4 flex items-baseline justify-between">
-              <h2 className="font-semibold">Что делает каждый участок</h2>
+              <h2 className="font-semibold">{t('Что делает каждый участок')}</h2>
               <StatusLegend bottleneck={false} />
             </div>
             <div className="space-y-3">
@@ -191,21 +200,42 @@ export default function TwinPage() {
                 const isTop = run.bottleneck.top === s.id
                 return (
                   <div key={s.id} className="flex items-center gap-3">
-                    <div className={`w-36 shrink-0 text-sm ${isTop ? 'font-semibold' : ''}`}>{s.name}{isTop && <span className="ml-1.5 inline-block align-middle"><BottleneckBadge size={10} /></span>}</div>
+                    <div className={`w-28 shrink-0 text-sm sm:w-36 ${isTop ? 'font-semibold' : ''}`}>{s.name}{isTop && <span className="ml-1.5 inline-block align-middle"><BottleneckBadge size={10} /></span>}</div>
                     <div className="flex h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
                       {(['working', 'down', 'blocked', 'starved'] as const).map((k) => <div key={k} style={{ width: `${100 * sh[k]}%`, background: STATUS[k].hex }} title={`${STATUS[k].label} ${Math.round(100 * sh[k])}%`} />)}
                     </div>
-                    <div className="w-24 shrink-0 text-right text-xs tabular-nums text-slate-500">стоит {Math.round(run.kpi.downtime_min[s.id] / 2)} мин/см</div>
+                    <div className="w-20 shrink-0 text-right text-xs tabular-nums text-slate-500">{Math.round(run.kpi.downtime_min[s.id] / 2)} мин/см</div>
                   </div>
                 )
               })}
             </div>
-            <p className="mt-4 flex items-center gap-1.5 text-xs text-slate-500"><BottleneckBadge size={10} /> узкое место — участок, который дольше всех работает без перерыва и задерживает остальных.</p>
           </Card>
+        </>
+      )}
 
+      {section === 'decide' && (
+        <>
+          <div id="shift-builder" className="scroll-mt-28">{offline ? <NeedServer what="«Смена: план и прогноз» пересчитывается на сервере." /> : <ShiftBuilder />}</div>
+          {run && <div id="actions" className="scroll-mt-28"><Actions whatif={whatif} onFutures={(id) => { setFutures(id); document.getElementById('twin-viewer')?.scrollIntoView({ behavior: 'smooth' }) }} /></div>}
+          <div id="effect" className="scroll-mt-28">{offline ? <NeedServer what="Эффект для завода считается на сервере." /> : <BusinessEffect />}</div>
+          <div id="station-value" className="scroll-mt-28">{offline ? <NeedServer what="Цена простоя считается на сервере." /> : <StationValue />}</div>
+        </>
+      )}
+
+      {section === 'quality' && (
+        <>
+          <div id="paint-spc" className="scroll-mt-28">{offline ? <NeedServer what="Контрольная карта строится на сервере." /> : <PaintSpc />}</div>
+          <div id="capa" className="scroll-mt-28">{offline ? <NeedServer what="Разбор брака хранится на сервере." /> : <Capa8D />}</div>
+          {run && <div id="cascade" className="scroll-mt-28"><LossCascade run={run} /></div>}
+        </>
+      )}
+
+      {section === 'history' && (
+        <>
+          <div id="journal" className="scroll-mt-28">{offline ? <NeedServer what="Журнал смен хранится на сервере." /> : <MonthJournal />}</div>
           <details className="group">
             <summary className="cursor-pointer list-none text-sm font-medium text-slate-500 hover:text-slate-800">
-              <span className="group-open:hidden">+ На каких допущениях построена модель</span><span className="hidden group-open:inline">− Скрыть допущения</span>
+              <span className="group-open:hidden">+ Допущения модели</span><span className="hidden group-open:inline">− Скрыть допущения</span>
             </summary>
             <Card className="mt-3 divide-y divide-slate-100">
               {meta.assumptions.map((a) => <div key={a.id} className="flex items-start gap-3 px-5 py-3 text-sm"><SourceBadge source={a.source as 'assumption'} /><span className="text-slate-600">{a.text}</span></div>)}

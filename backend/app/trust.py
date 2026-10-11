@@ -41,6 +41,7 @@ def trust() -> dict:
     real = json.loads(VALIDATION.read_text(encoding="utf-8")) if VALIDATION.exists() else None
     return {
         "factory": factory_check(today),
+        "prereg": __import__("app.prereg", fromlist=["stats"]).stats(),
         # самопроверка: журнал месяца построен тем же двойником — это проверка расчёта, а не точности
         "journal": {"hits": m["corridor_hits"], "shifts": m["shifts_total"], "month": m["month"], "source": "sim",
                     "text": "самопроверка двойника: утренний прогноз против симулированной смены"},

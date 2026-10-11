@@ -7,6 +7,7 @@ import { ZONE_BY_STATION } from './layout'
 import { useView } from './store'
 import { clock } from './Timeline'
 import { stamp } from '../dates'
+import { t as tr } from '../i18n'
 
 // Панель руководителя: выпуск против плана по ходу смены + журнал остановок.
 export default function Dashboard({ run }: { run: SimRun }) {
@@ -54,7 +55,7 @@ export default function Dashboard({ run }: { run: SimRun }) {
       </Card>
       <Card className="flex max-h-[340px] min-w-0 flex-col p-5">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="font-semibold">Журнал событий</h2>
+          <h2 className="font-semibold">{tr('Журнал событий')}</h2>
           <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs">
             {(['all', 'stops', 'alerts'] as const).map((k) => (
               <button key={k} onClick={() => setFilter(k)} className={`rounded-md px-2 py-1 ${filter === k ? 'bg-white font-medium shadow-sm' : 'text-slate-500'}`}>{k === 'all' ? 'Все' : k === 'stops' ? 'Остановки' : 'Тревоги'}</button>

@@ -2,6 +2,7 @@ import { Timer } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { tenge, useMoney } from '../money'
 import { Card, SourceBadge } from '../ui'
+import { t } from '../i18n'
 import { journalRequest } from './journalRequest'
 import MoneyInputs from './MoneyInputs'
 
@@ -33,7 +34,7 @@ export default function StationValue() {
   const changeMinutes = (v: number) => setMinutes(Math.max(0, Math.min(60, Number.isFinite(v) ? v : 0)))
   return <Card className="p-4 sm:p-5">
     <div className="mb-3 flex items-center justify-between gap-3">
-      <h2 className="flex items-center gap-2 text-lg font-semibold"><Timer size={18} />Простой и деньги</h2><SourceBadge source="sim" />
+      <h2 className="flex items-center gap-2 text-lg font-semibold"><Timer size={18} />{t('Простой и деньги')}</h2><SourceBadge source="sim" />
     </div>
     <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Участок для расчёта простоя">
       {d.stations.map(r => <button key={r.station} aria-pressed={station === r.station} onClick={() => setStation(r.station)} className={`rounded-xl px-3 py-2 text-sm font-medium ${station === r.station ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}>{r.name}</button>)}
