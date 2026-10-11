@@ -13,3 +13,4 @@ data/active_dataset.json
 *.sqlite-shm
 *.sqlite-wal
 data/stack_results.npz
+scratchpad/

@@ -21,9 +21,9 @@
   },
   "worst_station_down_day": 60.15500000000003,
   "bottleneck_share": {
-   "paint": 0.2,
    "assembly": 0.6,
-   "welding": 0.2
+   "welding": 0.2,
+   "paint": 0.2
   },
   "down_by_station_day": {
    "welding": 24.330000000000002,
@@ -51,9 +51,9 @@
   },
   "worst_station_down_day": 60.15500000000003,
   "bottleneck_share": {
-   "paint": 0.2,
    "assembly": 0.6,
-   "welding": 0.2
+   "welding": 0.2,
+   "paint": 0.2
   },
   "down_by_station_day": {
    "welding": 24.330000000000002,

@@ -1,0 +1,87 @@
+{
+ "tests": "76 passed, 3 warnings in 84.89s (0:01:24)",
+ "tests_ok": true,
+ "metrics": [
+  {
+   "metric": "Ошибка прогноза выпуска на 2 ч, машин (MAE)",
+   "ours": 2.66,
+   "baseline": 4.03,
+   "baseline_name": "как за прошлые 2 ч",
+   "better": "меньше",
+   "data": "10 отложенных потоков эмулятора (не в обучении)",
+   "source": "forecast"
+  },
+  {
+   "metric": "Покрытие коридора 90% (доля фактов внутри)",
+   "ours": 0.877,
+   "baseline": 0.9,
+   "baseline_name": "обещанное покрытие",
+   "better": "≈ цели",
+   "data": "10 потоков, прогноз до факта",
+   "source": "forecast"
+  },
+  {
+   "metric": "Риск провала выпуска: AUC",
+   "ours": 0.661,
+   "baseline": 0.5,
+   "baseline_name": "угадывание",
+   "better": "больше",
+   "data": "10 потоков; порог по цене ошибок",
+   "source": "forecast"
+  },
+  {
+   "metric": "Риск провала: поймано провалов (recall)",
+   "ours": 0.494,
+   "baseline": 0.155,
+   "baseline_name": "доля провалов (случайная тревога)",
+   "better": "больше",
+   "data": "порог 0.22",
+   "source": "forecast"
+  },
+  {
+   "metric": "Точность прогноза смены на РЕАЛЬНОЙ фабрике",
+   "ours": 0.8577,
+   "baseline": 0.8484,
+   "baseline_name": "план",
+   "better": "больше",
+   "data": "UCI 597 · Productivity Prediction of Garment Employees (реальная фабрика, 2015), 24 дн. проверки",
+   "source": "fact"
+  },
+  {
+   "metric": "Коридор на реальной фабрике",
+   "ours": 0.9107,
+   "baseline": 0.9,
+   "baseline_name": "обещанное покрытие",
+   "better": "≈ цели",
+   "data": "UCI 597 · Productivity Prediction of Garment Employees (реальная фабрика, 2015)",
+   "source": "fact"
+  },
+  {
+   "metric": "Сбои данных пойманы",
+   "ours": 6,
+   "baseline": 6,
+   "baseline_name": "всего сбоев",
+   "better": "= всего",
+   "data": "6 типов искажений потока",
+   "source": "calc"
+  },
+  {
+   "metric": "Ложные тревоги проверки данных на чистом потоке",
+   "ours": 0,
+   "baseline": 0,
+   "baseline_name": "ноль",
+   "better": "= 0",
+   "data": "чистый поток эмулятора",
+   "source": "calc"
+  },
+  {
+   "metric": "Подгонка двойника: восстановленное время ремонта, мин",
+   "ours": 54.5,
+   "baseline": 55,
+   "baseline_name": "скрытое истинное значение",
+   "better": "≈ истинному",
+   "data": "синтетический «завод» со скрытыми параметрами",
+   "source": "sim"
+  }
+ ]
+}
